@@ -1,0 +1,33 @@
+{
+  "originHash" : "5788ddb3b58044ed06aaad0ab41d864e6b28f442bdbdde1319eed04e34530cba",
+  "pins" : [
+    {
+      "identity" : "bluetoothcommonkit",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:tidepool-org/BluetoothCommonKit.git",
+      "state" : {
+        "branch" : "nate/IDS-refactoring",
+        "revision" : "bf894296d25d0891ecc1a941f4c90a396cdc74e1"
+      }
+    },
+    {
+      "identity" : "cryptoswift",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:krzyzanowskim/CryptoSwift.git",
+      "state" : {
+        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
+        "version" : "1.9.0"
+      }
+    },
+    {
+      "identity" : "insulindeliveryservicekit",
+      "kind" : "remoteSourceControl",
+      "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
+      "state" : {
+        "branch" : "nate/IDS-refactor",
+        "revision" : "979cc15b39dc836af4c6e228a64436e4863549cb"
+      }
+    }
+  ],
+  "version" : 3
+}
