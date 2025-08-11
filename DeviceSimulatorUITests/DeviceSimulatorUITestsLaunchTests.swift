@@ -1,5 +1,5 @@
 //
-//  Device_SimulatorUITestsLaunchTests.swift
+//  DeviceSimulatorUITestsLaunchTests.swift
 //  Device SimulatorUITests
 //
 //  Created by Nathaniel Hamming on 2025-08-08.
@@ -7,7 +7,7 @@
 
 import XCTest
 
-final class Device_SimulatorUITestsLaunchTests: XCTestCase {
+final class DeviceSimulatorUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

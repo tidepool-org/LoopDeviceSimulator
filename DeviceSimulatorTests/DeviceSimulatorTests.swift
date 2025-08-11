@@ -1,14 +1,14 @@
 //
-//  Device_SimulatorTests.swift
+//  DeviceSimulatorTests.swift
 //  Device SimulatorTests
 //
 //  Created by Nathaniel Hamming on 2025-08-08.
 //
 
 import XCTest
-@testable import Device_Simulator
+@testable import DeviceSimulator
 
-final class Device_SimulatorTests: XCTestCase {
+final class DeviceSimulatorTests: XCTestCase {
 
     override func setUpWithError() throws {
         // Put setup code here. This method is called before the invocation of each test method in the class.

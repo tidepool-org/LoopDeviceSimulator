@@ -28,9 +28,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		B4A5A2342E466AE900B9D83F /* Device Simulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Device Simulator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
-		B4A5A2412E466AEC00B9D83F /* Device SimulatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Device SimulatorTests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
-		B4A5A24B2E466AEC00B9D83F /* Device SimulatorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Device SimulatorUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
+		B4A5A2342E466AE900B9D83F /* DeviceSimulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeviceSimulator.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B4A5A2412E466AEC00B9D83F /* DeviceSimulatorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeviceSimulatorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B4A5A24B2E466AEC00B9D83F /* DeviceSimulatorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeviceSimulatorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -90,9 +90,9 @@
 		B4A5A2352E466AE900B9D83F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				B4A5A2342E466AE900B9D83F /* Device Simulator.app */,
-				B4A5A2412E466AEC00B9D83F /* Device SimulatorTests.xctest */,
-				B4A5A24B2E466AEC00B9D83F /* Device SimulatorUITests.xctest */,
+				B4A5A2342E466AE900B9D83F /* DeviceSimulator.app */,
+				B4A5A2412E466AEC00B9D83F /* DeviceSimulatorTests.xctest */,
+				B4A5A24B2E466AEC00B9D83F /* DeviceSimulatorUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,9 +100,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		B4A5A2332E466AE900B9D83F /* Device Simulator */ = {
+		B4A5A2332E466AE900B9D83F /* DeviceSimulator */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B4A5A2532E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device Simulator" */;
+			buildConfigurationList = B4A5A2532E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulator" */;
 			buildPhases = (
 				B4A5A2302E466AE900B9D83F /* Sources */,
 				B4A5A2312E466AE900B9D83F /* Frameworks */,
@@ -115,17 +115,17 @@
 			fileSystemSynchronizedGroups = (
 				B4A5A2362E466AE900B9D83F /* DeviceSimulator */,
 			);
-			name = "Device Simulator";
+			name = DeviceSimulator;
 			packageProductDependencies = (
 				B4A5A2602E466CF100B9D83F /* InsulinDeliveryServiceKit */,
 			);
 			productName = "Device Simulator";
-			productReference = B4A5A2342E466AE900B9D83F /* Device Simulator.app */;
+			productReference = B4A5A2342E466AE900B9D83F /* DeviceSimulator.app */;
 			productType = "com.apple.product-type.application";
 		};
-		B4A5A2402E466AEC00B9D83F /* Device SimulatorTests */ = {
+		B4A5A2402E466AEC00B9D83F /* DeviceSimulatorTests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B4A5A2562E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device SimulatorTests" */;
+			buildConfigurationList = B4A5A2562E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulatorTests" */;
 			buildPhases = (
 				B4A5A23D2E466AEC00B9D83F /* Sources */,
 				B4A5A23E2E466AEC00B9D83F /* Frameworks */,
@@ -139,16 +139,16 @@
 			fileSystemSynchronizedGroups = (
 				B4A5A2442E466AEC00B9D83F /* DeviceSimulatorTests */,
 			);
-			name = "Device SimulatorTests";
+			name = DeviceSimulatorTests;
 			packageProductDependencies = (
 			);
 			productName = "Device SimulatorTests";
-			productReference = B4A5A2412E466AEC00B9D83F /* Device SimulatorTests.xctest */;
+			productReference = B4A5A2412E466AEC00B9D83F /* DeviceSimulatorTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
-		B4A5A24A2E466AEC00B9D83F /* Device SimulatorUITests */ = {
+		B4A5A24A2E466AEC00B9D83F /* DeviceSimulatorUITests */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = B4A5A2592E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device SimulatorUITests" */;
+			buildConfigurationList = B4A5A2592E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulatorUITests" */;
 			buildPhases = (
 				B4A5A2472E466AEC00B9D83F /* Sources */,
 				B4A5A2482E466AEC00B9D83F /* Frameworks */,
@@ -162,11 +162,11 @@
 			fileSystemSynchronizedGroups = (
 				B4A5A24E2E466AEC00B9D83F /* DeviceSimulatorUITests */,
 			);
-			name = "Device SimulatorUITests";
+			name = DeviceSimulatorUITests;
 			packageProductDependencies = (
 			);
 			productName = "Device SimulatorUITests";
-			productReference = B4A5A24B2E466AEC00B9D83F /* Device SimulatorUITests.xctest */;
+			productReference = B4A5A24B2E466AEC00B9D83F /* DeviceSimulatorUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 /* End PBXNativeTarget section */
@@ -210,9 +210,9 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				B4A5A2332E466AE900B9D83F /* Device Simulator */,
-				B4A5A2402E466AEC00B9D83F /* Device SimulatorTests */,
-				B4A5A24A2E466AEC00B9D83F /* Device SimulatorUITests */,
+				B4A5A2332E466AE900B9D83F /* DeviceSimulator */,
+				B4A5A2402E466AEC00B9D83F /* DeviceSimulatorTests */,
+				B4A5A24A2E466AEC00B9D83F /* DeviceSimulatorUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -268,12 +268,12 @@
 /* Begin PBXTargetDependency section */
 		B4A5A2432E466AEC00B9D83F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B4A5A2332E466AE900B9D83F /* Device Simulator */;
+			target = B4A5A2332E466AE900B9D83F /* DeviceSimulator */;
 			targetProxy = B4A5A2422E466AEC00B9D83F /* PBXContainerItemProxy */;
 		};
 		B4A5A24D2E466AEC00B9D83F /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = B4A5A2332E466AE900B9D83F /* Device Simulator */;
+			target = B4A5A2332E466AE900B9D83F /* DeviceSimulator */;
 			targetProxy = B4A5A24C2E466AEC00B9D83F /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -762,7 +762,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B4A5A2532E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device Simulator" */ = {
+		B4A5A2532E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulator" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B4A5A2542E466AEC00B9D83F /* Debug */,
@@ -771,7 +771,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B4A5A2562E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device SimulatorTests" */ = {
+		B4A5A2562E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulatorTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B4A5A2572E466AEC00B9D83F /* Debug */,
@@ -780,7 +780,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		B4A5A2592E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "Device SimulatorUITests" */ = {
+		B4A5A2592E466AEC00B9D83F /* Build configuration list for PBXNativeTarget "DeviceSimulatorUITests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				B4A5A25A2E466AEC00B9D83F /* Debug */,

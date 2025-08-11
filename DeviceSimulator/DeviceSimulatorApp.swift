@@ -1,5 +1,5 @@
 //
-//  Device_SimulatorApp.swift
+//  DeviceSimulatorApp.swift
 //  Device Simulator
 //
 //  Created by Nathaniel Hamming on 2025-08-08.
@@ -10,7 +10,7 @@ import SwiftUI
 import BluetoothCommonKit
 
 @main
-struct Device_SimulatorApp: App, HorizontalSizeClassOverride {
+struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
     private var insulinDeliveryServiceViewModel = InsulinDeliveryServiceViewModel()
 
     @State private var _insulinDeliveryServiceViewActive = false
