@@ -11,28 +11,10 @@ import BluetoothCommonKit
 
 @main
 struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
-    private var insulinDeliveryServiceViewModel = InsulinDeliveryServiceViewModel()
+    private var insulinDeliveryServerViewModel = InsulinDeliveryServerViewModel()
+    private var insulinDeliveryClientViewModel = InsulinDeliveryClientViewModel()
 
-    @State private var _insulinDeliveryServiceViewActive = false
     @State private var serverName: String = InsulinDeliveryConstants.serverName
-
-    private var insulinDeliveryServiceViewActive: Binding<Bool> {
-        Binding(
-            get: { _insulinDeliveryServiceViewActive },
-            set: { viewActive in
-                _insulinDeliveryServiceViewActive = viewActive
-                if viewActive {
-                    // Initialize the console
-                    ConsoleOut.shared.delegate = insulinDeliveryServiceViewModel
-
-                    // Initialize Elapsed Time Service
-                    insulinDeliveryServiceViewModel.startServer(serverName: serverName)
-                } else {
-                    insulinDeliveryServiceViewModel.stopServer()
-                }
-            }
-        )
-    }
     
     var body: some Scene {
         WindowGroup {
@@ -41,18 +23,31 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
                     HStack {
                         TextField("Server Name", text: $serverName)
                     }
-                    NavigationLink(destination: insulinDeliveryServiceView,
-                                   isActive: insulinDeliveryServiceViewActive) {
-                        Text("Insulin Delivery Service")
+                    
+                    Section(header: Text("Services")) {
+                        NavigationLink(destination: insulinDeliveryServerView) {
+                            Text("Insulin Delivery Server")
+                        }
+                    }
+                    
+                    Section(header: Text("Clients")) {
+                        NavigationLink(destination: insulinDeliveryClientView) {
+                            Text("Insulin Delivery Client")
+                        }
                     }
                 }
-                .navigationTitle("Services \(Bundle.main.fullVersionString)")
+                .navigationTitle("Simulator \(Bundle.main.fullVersionString)")
             }
         }
     }
     
-    private var insulinDeliveryServiceView: some View {
-        InsulinDeliveryServiceView(viewModel: insulinDeliveryServiceViewModel)
+    private var insulinDeliveryServerView: some View {
+        InsulinDeliveryServerView(viewModel: insulinDeliveryServerViewModel)
+            .environment(\.horizontalSizeClass, horizontalOverride)
+    }
+    
+    private var insulinDeliveryClientView: some View {
+        InsulinDeliveryClientView(viewModel: insulinDeliveryClientViewModel)
             .environment(\.horizontalSizeClass, horizontalOverride)
     }
 }
