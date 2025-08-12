@@ -48,7 +48,7 @@ struct InsulinDeliveryServiceView: View {
             RoundedCardToggleRow(label: "E2E Protection Supported", enabled: $viewModel.isE2EProtectionSupported, toggleTintColor: .accentColor)
             Divider()
             VStack {
-                RoundedCardToggleRow(label: "Authorization Control Supported", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
+                RoundedCardToggleRow(label: "Authorization Control Required", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
                 RoundedCardValueRow(label: "Pump Key", value: viewModel.oobRandomNumberString)
             }
         }
