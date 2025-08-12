@@ -11,24 +11,25 @@ import CoreBluetooth
 import BluetoothCommonKit
 import InsulinDeliveryServiceKit
 
-class InsulinDeliveryServiceViewModel: ObservableObject {
+@Observable
+class InsulinDeliveryServiceViewModel {
 
-    private var server: GATTServer?
-    private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
+    @ObservationIgnored private var server: GATTServer?
+    @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
 
-    @Published var consoleMessages: String = ""
-    @Published var isServerBusy = false {
+    var consoleMessages: String = ""
+    var isServerBusy = false {
         didSet {
             if mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy != isServerBusy {
                 mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy = isServerBusy
             }
         }
     }
-    @Published var procedureAlreadyInProgress = false 
-    @Published var outOfRangeSchedule = false
-    @Published var numberOfSubscribedDevices: Int = 0
-    @Published var readyToDisconnect = false
-    @Published var isPumpPoweredOn = true {
+    var procedureAlreadyInProgress = false
+    var outOfRangeSchedule = false
+    var numberOfSubscribedDevices: Int = 0
+    var readyToDisconnect = false
+    var isPumpPoweredOn = true {
         didSet {
             if isPumpPoweredOn {
                 startServer()
@@ -37,33 +38,33 @@ class InsulinDeliveryServiceViewModel: ObservableObject {
             }
         }
     }
-    @Published var isPumpBehaviourEnabled = false {
+    var isPumpBehaviourEnabled = false {
         didSet {
             mockInsulinDeliveryPump?.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         }
     }
-    @Published var isAuthorizationControlEnabled = false {
+    var isAuthorizationControlEnabled = false {
         didSet {
             mockInsulinDeliveryPump?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
     
-    var oobRandomNumberString: String {
+    @ObservationIgnored var oobRandomNumberString: String {
         guard let oobString = mockInsulinDeliveryPump?.securityManager.configuration.oobRandomNumber else {
             return "Unknown"
         }
         return String(data: oobString, encoding: .utf8)!
     }
     
-    @Published var annunciationTypeToIssue: AnnunciationType?
+    var annunciationTypeToIssue: AnnunciationType?
         
-    @Published var therapyStateString: String = String(describing: InsulinTherapyControlState.undetermined)
-    @Published var operationalStateString: String = String(describing: PumpOperationalState.undetermined)
-    @Published var reservoirLevelString: String = ""
-    @Published var basalDeliveryString: String = ""
-    @Published var bolusDeliveryString: String = ""
+    var therapyStateString: String = String(describing: InsulinTherapyControlState.undetermined)
+    var operationalStateString: String = String(describing: PumpOperationalState.undetermined)
+    var reservoirLevelString: String = ""
+    var basalDeliveryString: String = ""
+    var bolusDeliveryString: String = ""
     
-    private var serverName: String?
+    @ObservationIgnored private var serverName: String?
     
     func startServer(serverName: String? = nil) {
         if let serverName = serverName {

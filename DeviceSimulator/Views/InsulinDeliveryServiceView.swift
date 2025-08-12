@@ -10,7 +10,7 @@ import SwiftUI
 import InsulinDeliveryServiceKit
 
 struct InsulinDeliveryServiceView: View {
-    @ObservedObject var viewModel: InsulinDeliveryServiceViewModel
+    @Bindable var viewModel: InsulinDeliveryServiceViewModel
 
     var body: some View {
         insulinDeliveryServer
