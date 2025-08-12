@@ -1,5 +1,5 @@
 //
-//  InsulinDeliveryServiceView.swift
+//  InsulinDeliveryServerView.swift
 //  LoopDeviceSimulator
 //
 //  Created by Nathaniel Hamming on 2025-08-08.
@@ -9,11 +9,13 @@
 import SwiftUI
 import InsulinDeliveryServiceKit
 
-struct InsulinDeliveryServiceView: View {
-    @Bindable var viewModel: InsulinDeliveryServiceViewModel
+struct InsulinDeliveryServerView: View {
+    @Bindable var viewModel: InsulinDeliveryServerViewModel
 
     var body: some View {
         insulinDeliveryServer
+            .onAppear(perform: { viewModel.startServer() })
+            .onDisappear(perform: { viewModel.stopServer() })
     }
 
     private var insulinDeliveryServer: some View {
@@ -114,8 +116,8 @@ struct InsulinDeliveryServiceView: View {
     }
 }
 
-struct InsulinDeliveryServiceView_Previews: PreviewProvider {
+struct InsulinDeliveryServerView_Previews: PreviewProvider {
     static var previews: some View {
-        InsulinDeliveryServiceView(viewModel: InsulinDeliveryServiceViewModel())
+        InsulinDeliveryServerView(viewModel: InsulinDeliveryServerViewModel())
     }
 }

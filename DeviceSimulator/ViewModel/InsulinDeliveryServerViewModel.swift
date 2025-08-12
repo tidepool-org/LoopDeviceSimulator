@@ -1,5 +1,5 @@
 //
-//  InsulinDeliveryServiceViewModel.swift
+//  InsulinDeliveryServerViewModel.swift
 //  LoopDeviceSimulator
 //
 //  Created by Nathaniel Hamming on 2025-08-08.
@@ -12,7 +12,7 @@ import BluetoothCommonKit
 import InsulinDeliveryServiceKit
 
 @Observable
-class InsulinDeliveryServiceViewModel {
+class InsulinDeliveryServerViewModel {
 
     @ObservationIgnored private var server: GATTServer?
     @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
@@ -105,7 +105,7 @@ class InsulinDeliveryServiceViewModel {
 
 // MARK: - Console Out Delegate
 
-extension InsulinDeliveryServiceViewModel: ConsoleOutDelegate {
+extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
     func displayMessageInConsole(message: String) {
         DispatchQueue.main.async {
             self.consoleMessages = message + "\n" + self.consoleMessages
@@ -115,7 +115,7 @@ extension InsulinDeliveryServiceViewModel: ConsoleOutDelegate {
 
 // MARK: - GATT Service Delegate
 
-extension InsulinDeliveryServiceViewModel: GATTServiceDelegate {
+extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
     }
@@ -135,7 +135,7 @@ extension InsulinDeliveryServiceViewModel: GATTServiceDelegate {
 
 // MARK: - Annunciations
 
-extension InsulinDeliveryServiceViewModel {
+extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
@@ -143,7 +143,7 @@ extension InsulinDeliveryServiceViewModel {
 }
 
 // MARK: - Authorization Control
-extension InsulinDeliveryServiceViewModel {
+extension InsulinDeliveryServerViewModel {
     func sendSecureIndication() {
         let message = "This is a secure indication".data(using: .utf8)!
         mockInsulinDeliveryPump?.sendSecureIndication(message, to: 1)
@@ -152,7 +152,7 @@ extension InsulinDeliveryServiceViewModel {
 
 // MARK: - E2E Protection Delegate
 
-extension InsulinDeliveryServiceViewModel: E2EProtectionDelegate {
+extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
     var isE2EProtectionSupported: Bool {
         get {
             mockInsulinDeliveryPump?.featureCharacteristic.flags.contains(.supportedE2EProtection) ?? false
@@ -168,7 +168,7 @@ extension InsulinDeliveryServiceViewModel: E2EProtectionDelegate {
 }
 
 // MARK: - Mock Pump Delegate
-extension InsulinDeliveryServiceViewModel: MockInsulinDeliveryPumpDelegate {
+extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
     func mockPumpDidUpdate(_ pump: InsulinDeliveryServiceKit.MockInsulinDeliveryPump) {
         therapyStateString = String(describing: pump.therapyState)
         operationalStateString = String(describing: pump.operationalState)

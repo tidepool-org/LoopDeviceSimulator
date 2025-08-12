@@ -10,9 +10,8 @@ import Foundation
 import CoreBluetooth
 import InsulinDeliveryServiceKit
 
-// Service UUID's
 struct InsulinDeliveryConstants {
-    static let serverName: String = "Tidepool-1-Server"
+    static let serverName: String = "Tidepool-1-Simulator"
 }
 
 // MARK: - bit flags
