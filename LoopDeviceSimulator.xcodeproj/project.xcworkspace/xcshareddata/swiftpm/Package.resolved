@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
-        "branch" : "nate/temp-basal-check",
-        "revision" : "7e7c32d743b698288e43635af5d5cb066597da00"
+        "branch" : "dev",
+        "revision" : "6c4c667917409709d480ced93783d8446fa677f1"
       }
     }
   ],
