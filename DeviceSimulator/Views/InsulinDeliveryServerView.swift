@@ -34,6 +34,7 @@ struct InsulinDeliveryServerView: View {
             RoundedCardValueRow(label: "Operational State", value: viewModel.operationalStateString)
             RoundedCardValueRow(label: "Reservoir Level", value: viewModel.reservoirLevelString)
             RoundedCardValueRow(label: "Basal delivery", value: viewModel.basalDeliveryString)
+            RoundedCardValueRow(label: "Is Temp Basal", value: viewModel.isTempBasalString)
             RoundedCardValueRow(label: "Bolus delivery", value: viewModel.bolusDeliveryString)
         }
         

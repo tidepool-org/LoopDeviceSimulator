@@ -62,6 +62,7 @@ class InsulinDeliveryServerViewModel {
     var operationalStateString: String = String(describing: PumpOperationalState.undetermined)
     var reservoirLevelString: String = ""
     var basalDeliveryString: String = ""
+    var isTempBasalString: String = ""
     var bolusDeliveryString: String = ""
     
     @ObservationIgnored private var serverName: String?
@@ -177,7 +178,8 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         let formatter = NumberFormatter()
         formatter.maximumFractionDigits = 2
         reservoirLevelString = String(describing: formatter.string(from: pump.reservoirRemaining)!)
-        basalDeliveryString = String(describing: pump.activeBasalRate)
+        basalDeliveryString = pump.activeBasalRate != nil ? String(describing: (pump.activeBasalRate)) : "no basal delivery"
+        isTempBasalString = pump.isTempBasal ? "yes" : "no"
         let activeBolusDeliveryStatus = pump.activeBolusDeliveryStatus
         bolusDeliveryString = activeBolusDeliveryStatus.progressState == .noActiveBolus ? "no active bolus" : "\(String(describing: activeBolusDeliveryStatus.insulinDelivered)) of \(String(describing: activeBolusDeliveryStatus.insulinProgrammed))"
     }
