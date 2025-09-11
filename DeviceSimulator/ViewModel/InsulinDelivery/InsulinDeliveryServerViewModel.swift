@@ -15,7 +15,7 @@ import InsulinDeliveryServiceKit
 class InsulinDeliveryServerViewModel {
 
     @ObservationIgnored private var server: GATTServer?
-    @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
+    @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPumpEnhancement?
 
     /// The tester's configuration, kept across relaunches. Pairing and history have their own stores; the
     /// error-forcing toggles (server busy and the like) are session stimuli a stop clears, so they are not kept.
@@ -225,6 +225,8 @@ class InsulinDeliveryServerViewModel {
         }
     }
 
+    var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
+
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
     @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
@@ -316,7 +318,7 @@ class InsulinDeliveryServerViewModel {
         faultQueue = messageQueue
         // A pump that was powered off comes back as it was: reservoir, profile, therapy and operational state.
         let restoredStatus = pumpStateStore.load().flatMap(MockInsulinDeliveryPumpStatus.init(rawValue:))
-        let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue, status: restoredStatus)
+        let pump = MockInsulinDeliveryPumpEnhancement(gattServer: server, messageQueue: messageQueue, status: restoredStatus)
         messageQueue.hasE2ECRC = { [weak pump] in pump?.isE2EProtectionSupported ?? false }
         // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
@@ -490,7 +492,6 @@ extension InsulinDeliveryServerViewModel.Settings {
 }
 
 // MARK: - Console Out Delegate
-
 extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
     func displayMessageInConsole(message: String) {
         DispatchQueue.main.async {
@@ -500,7 +501,6 @@ extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
 }
 
 // MARK: - GATT Service Delegate
-
 extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
@@ -550,12 +550,29 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 }
 
 // MARK: - Annunciations
-
 extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
         stimulus("Issue Annunciation: \(annunciationTypeToIssue.description)")
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
+    }
+}
+
+// MARK: - Status Changed
+extension InsulinDeliveryServerViewModel {
+    func issueStatusChanged() {
+        guard !statusChangedSelection.isEmpty else { return }
+        var statusChangedToSend: IDStatusChangedFlagEnhancement = []
+        statusChangedSelection.forEach {
+            statusChangedToSend.insert($0)
+        }
+        mockInsulinDeliveryPump?.triggerStatusChangedIndicationsEnhancement(for: statusChangedToSend)
+    }
+}
+
+extension MockInsulinDeliveryPumpEnhancement {
+    func triggerStatusChangedIndicationsEnhancement(for statusChanges: IDStatusChangedFlagEnhancement) {
+        statusChangedCharacteristic.triggerIndication(for: statusChanges.originalFlags)
     }
 }
 

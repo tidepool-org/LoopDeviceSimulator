@@ -38,7 +38,56 @@ struct CheckSelectionRow<Item>: View where Item: Hashable & CustomStringConverti
 
     var body: some View {
         HStack {
-            Button(action: { selectedItem = item } ) {
+            Button(action: { selectedItem = item }) {
+                Text(String(describing: item))
+                    .foregroundColor(.primary)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.accentColor)
+                }
+            }
+        }
+    }
+}
+
+public struct MultiSelectionCheckList<Item: Hashable & CustomStringConvertible>: View {
+    let items: [Item]
+    @Binding var selectedItems: [Item]
+
+    public init(items: [Item],
+                selectedItems: Binding<[Item]>) {
+        self.items = items
+        _selectedItems = selectedItems
+    }
+
+    public var body: some View {
+        VStack(spacing: 12) {
+            ForEach(items, id:\.self) { item in
+                CheckMultiSelectionRow<Item>(item: item,
+                                             selectedItems: self.$selectedItems)
+            }
+        }
+    }
+}
+
+struct CheckMultiSelectionRow<Item>: View where Item: Hashable & CustomStringConvertible {
+    var item: Item
+    @Binding var selectedItems: [Item]
+
+    var isSelected: Bool {
+        selectedItems.contains(item)
+    }
+
+    var body: some View {
+        HStack {
+            Button(action: {
+                if isSelected {
+                    selectedItems.removeAll { $0 == item }
+                } else {
+                    selectedItems.append(item)
+                }
+            } ) {
                 Text(String(describing: item))
                     .foregroundColor(.primary)
                 Spacer()
