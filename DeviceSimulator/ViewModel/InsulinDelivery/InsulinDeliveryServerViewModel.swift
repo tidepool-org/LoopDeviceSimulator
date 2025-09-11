@@ -226,6 +226,14 @@ class InsulinDeliveryServerViewModel {
     }
 
     var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
+    var statusFlags: [IDStatusFlag] = [] {
+        didSet {
+            var flags: IDStatusFlag = []
+            statusFlags.forEach { flags.insert($0) }
+            mockInsulinDeliveryPump?.statusCharacteristic.flags = flags
+            mockInsulinDeliveryPump?.statusCharacteristic.triggerIndication()
+        }
+    }
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
@@ -338,6 +346,13 @@ class InsulinDeliveryServerViewModel {
         mockInsulinDeliveryPump = pump
         mockPumpDidUpdate(pump)
         SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName), simulator \(Bundle.main.fullVersionString)")
+
+        if pump.statusCharacteristic.flags.contains(.reservoirAttached) {
+            statusFlags.append(.reservoirAttached)
+        }
+        if pump.statusCharacteristic.flags.contains(.reservoirRemainingAmountAccurate) {
+            statusFlags.append(.reservoirRemainingAmountAccurate)
+        }
     }
 
     func stopServer() {

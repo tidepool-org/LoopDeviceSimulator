@@ -136,6 +136,7 @@ struct InsulinDeliveryServerView: View {
         FaultInjectionCard(host: viewModel)
 
         RoundedCard(title: "Controls") {
+            statusFlags
             triggerStatusChanged
             triggerAnnunciations
             sendSecureMessage
@@ -159,6 +160,12 @@ struct InsulinDeliveryServerView: View {
         }
     }
 
+    private var statusFlags: some View {
+        RoundedCard(title: "Status Flags") {
+            MultiSelectionCheckList(items: IDStatusFlag.allCases, selectedItems: $viewModel.statusFlags)
+        }
+    }
+    
     private var triggerStatusChanged: some View {
         RoundedCard(title: "Status Changed") {
             MultiSelectionCheckList(items: IDStatusChangedFlagEnhancement.allCases, selectedItems: $viewModel.statusChangedSelection)
