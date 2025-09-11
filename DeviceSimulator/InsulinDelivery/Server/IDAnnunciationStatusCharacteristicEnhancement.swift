@@ -79,14 +79,49 @@ class IDAnnunciationStatusCharacteristicEnhancement: IDAnnunciationStatusCharact
 
 extension AnnunciationType {
     static let automaticStop = AnnunciationType(rawValue: 0x0369)
-    static let batteryAttention = AnnunciationType(rawValue: 0xf096)
-    static let batteryError = AnnunciationType(rawValue: 0xf000)
-    static let pumpNotConfigured = AnnunciationType(rawValue: 0xf033)
-    static let endOfLifetime = AnnunciationType(rawValue: 0xf066)
-    static let endOfPumpLifetime = AnnunciationType(rawValue: 0xf03c)
-    static let endOfReservoirTime = AnnunciationType(rawValue: 0xf05a)
+//    static let batteryAttention = AnnunciationType(rawValue: 0xf096)
+//    static let batteryError = AnnunciationType(rawValue: 0xf000)
+//    static let pumpNotConfigured = AnnunciationType(rawValue: 0xf033)
+//    static let endOfLifetime = AnnunciationType(rawValue: 0xf066)
+//    static let endOfPumpLifetime = AnnunciationType(rawValue: 0xf03c)
+//    static let endOfReservoirTime = AnnunciationType(rawValue: 0xf05a)
     static let lifetimeWarning = AnnunciationType(rawValue: 0x036a)
-    static let lowDeliveryRate = AnnunciationType(rawValue: 0xf055)
+//    static let lowDeliveryRate = AnnunciationType(rawValue: 0xf055)
     static let reservoirLevelWarning = AnnunciationType(rawValue: 0x036c)
-    static let stopWarning = AnnunciationType(rawValue: 0xf069)
+//    static let stopWarning = AnnunciationType(rawValue: 0xf069)
+    
+    public static var allAnnunciations: [AnnunciationType] {
+        [.airPressureOutOfRange,
+         .batteryEmpty,
+         .batteryFull,
+         .batteryLow,
+         .batteryMedium,
+         .bolusCanceled,
+         .dateTimeIssue,
+         .infusionSetDetached,
+         .infusionSetIncomplete,
+         .maxDelivery,
+         .mechanicalIssue,
+         .occlusionDetected,
+         .powerSourceInsufficient,
+         .primingIssue,
+         .reservoirEmpty,
+         .reservoirLow,
+         .reservoirIssue,
+         .systemIssue,
+         .temperatureOutOfRange,
+         .tempBasalCanceled,
+         .tempBasalOver,
+         .automaticStop,
+//         .batteryAttention,
+//         .batteryError,
+//         .pumpNotConfigured,
+//         .endOfLifetime,
+//         .endOfPumpLifetime,
+//         .endOfReservoirTime,
+         .lifetimeWarning,
+//         .lowDeliveryRate,
+         .reservoirLevelWarning]
+//         .stopWarning]
+    }
 }

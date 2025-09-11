@@ -122,7 +122,7 @@ struct InsulinDeliveryServerView: View {
         }
         
         private var annunciations: [AnnunciationType?] {
-            [nil] + (AnnunciationType.allCases.sorted {$0.description < $1.description})
+            [nil] + (AnnunciationType.allAnnunciations.sorted {$0.description < $1.description})
         }
     }
     
