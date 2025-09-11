@@ -64,9 +64,16 @@ struct InsulinDeliveryServerView: View {
         }
         
         RoundedCard(title: "Controls") {
+            statusFlags
             triggerStatusChanged
             triggerAnnunciations
             sendSecureMessage
+        }
+    }
+    
+    private var statusFlags: some View {
+        RoundedCard(title: "Status Flags") {
+            MultiSelectionCheckList(items: IDStatusFlag.allCases, selectedItems: $viewModel.statusFlags)
         }
     }
     

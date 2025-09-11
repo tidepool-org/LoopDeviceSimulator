@@ -30,6 +30,10 @@ class MockInsulinDeliveryPumpEnhancement: MockInsulinDeliveryPump {
     override class func createReadableCharacteristic<T: ReadableCharacteristic>(of type: T.Type, messageQueue: any MessagingQueue) -> T {
         if type == IDStatusChangedCharacteristic.self {
             return IDStatusChangedCharacteristicEnhancement(messageQueue: messageQueue) as! T
+        } else if type == IDFeatureCharacteristic.self {
+            return IDFeatureCharacteristicEnhancement(messageQueue: messageQueue) as! T
+        } else if type == IDStatusCharacteristic.self {
+            return IDStatusCharacteristicEnhancement(messageQueue: messageQueue) as! T
         } else {
             return T(messageQueue: messageQueue)
         }

@@ -202,7 +202,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
         switch characteristic.uuid {
         case InsulinDeliveryCharacteristicUUID.features.cbUUID:
             print("Data from feature characteristic")
-            let result = IDFeatureDataHandler.handleData(characteristicData)
+            let result = IDFeatureDataHandlerEnhancement.handleData(characteristicData)
             switch result {
             case .success((_ , let features)):
                 self.features = features

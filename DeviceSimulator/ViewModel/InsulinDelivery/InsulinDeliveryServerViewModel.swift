@@ -66,6 +66,14 @@ class InsulinDeliveryServerViewModel {
     var bolusDeliveryString: String = ""
     
     var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
+    var statusFlags: [IDStatusFlag] = [] {
+        didSet {
+            var flags: IDStatusFlag = []
+            statusFlags.forEach { flags.insert($0) }
+            mockInsulinDeliveryPump?.statusCharacteristic.flags = flags
+            mockInsulinDeliveryPump?.statusCharacteristic.triggerIndication()
+        }
+    }
     
     @ObservationIgnored private var serverName: String?
     
@@ -81,6 +89,13 @@ class InsulinDeliveryServerViewModel {
         mockInsulinDeliveryPump = MockInsulinDeliveryPumpEnhancement(gattServer: server, messageQueue: messageQueue)
         mockInsulinDeliveryPump?.delegate = self
         mockPumpDidUpdate(mockInsulinDeliveryPump!)
+        
+        if mockInsulinDeliveryPump?.statusCharacteristic.flags.contains(.reservoirAttached) == true {
+            statusFlags.append(.reservoirAttached)
+        }
+        if mockInsulinDeliveryPump?.statusCharacteristic.flags.contains(.reservoirRemainingAmountAccurate) == true {
+            statusFlags.append(.reservoirRemainingAmountAccurate)
+        }
     }
 
     func stopServer() {

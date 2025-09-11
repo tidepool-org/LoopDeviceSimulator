@@ -14,56 +14,6 @@ struct InsulinDeliveryConstants {
     static let serverName: String = "Tidepool-1-Simulator"
 }
 
-// MARK: - bit flags
-extension IDFeatureFlag {
-    static let supportedAutomaticStop = IDFeatureFlag(rawValue: 1 << 16)
-    static let supportedLocalBolus = IDFeatureFlag(rawValue: 1 << 17)
-    static let supportedAcousticSignalSuspension = IDFeatureFlag(rawValue: 1 << 18)
-    static let supportedWarningLimitLifetime = IDFeatureFlag(rawValue: 1 << 19)
-    static let supportedWarningLimitReservoirLevel = IDFeatureFlag(rawValue: 1 << 20)
-    static let supportedAcousticSignalStartInsulinDelivery = IDFeatureFlag(rawValue: 1 << 21)
-    static let supportedFeatureExtension = IDFeatureFlag(rawValue: 1 << 31)
-    
-    static var debugDescription: [IDFeatureFlag:String] = {
-        var description = [IDFeatureFlag:String]()
-        description[.supportedE2EProtection] = "supportedE2EProtection"
-        description[.supportedBasalRate] = "supportedBasalRate"
-        description[.supportedTBRAbsolute] = "supportedTBRAbsolute"
-        description[.supportedTBRRelative] = "supportedTBRRelative"
-        description[.supportedTBRTemplate] = "supportedTBRTemplate"
-        description[.supportedBolusFast] = "supportedBolusFast"
-        description[.supportedBolusExtended] = "supportedBolusExtended"
-        description[.supportedBolusMultiwave] = "supportedBolusMultiwave"
-        description[.supportedBolusDelayTime] = "supportedBolusDelayTime"
-        description[.supportedBolusTemplate] = "supportedBolusTemplate"
-        description[.supportedBolusActivationType] = "supportedBolusActivationType"
-        description[.supportedMultipleBond] = "supportedMultipleBond"
-        description[.supportedProfileISF] = "supportedProfileISF"
-        description[.supportedProfileI2CHO] = "supportedProfileI2CHO"
-        description[.supportedProfileTargetGlucoseRange] = "supportedProfileTargetGlucoseRange"
-        description[.supportedIOB] = "supportedIOB"
-        description[.supportedAutomaticStop] = "supportedAutomaticStop"
-        description[.supportedLocalBolus] = "supportedLocalBolus"
-        description[.supportedAcousticSignalSuspension] = "supportedAcousticSignalSuspension"
-        description[.supportedWarningLimitLifetime] = "supportedWarningLimitLifetime"
-        description[.supportedWarningLimitReservoirLevel] = "supportedWarningLimitReservoirLevel"
-        description[.supportedAcousticSignalStartInsulinDelivery] = "supportedAcousticSignalStartInsulinDelivery"
-        description[.supportedFeatureExtension] = "supportedFeatureExtension"
-        return description
-    }()
-}
-
-extension IDStatusFlag {
-    static let reservoirRemainingAmountAccurate  = IDStatusFlag(rawValue: 1 << 1)
-    
-    static var debugDescriptions: [IDStatusFlag: String] {
-        var descriptions = [IDStatusFlag: String]()
-        descriptions[.reservoirAttached] = "reservoirAttached"
-        descriptions[.reservoirRemainingAmountAccurate] = "reservoirRemainingAmountAccurate"
-        return descriptions
-    }
-}
-
 struct AvailableBolusFlag: OptionSet, Hashable, CustomStringConvertible {
     let rawValue: UInt8
     
