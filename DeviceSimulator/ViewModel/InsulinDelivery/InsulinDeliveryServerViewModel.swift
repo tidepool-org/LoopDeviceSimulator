@@ -15,7 +15,7 @@ import InsulinDeliveryServiceKit
 class InsulinDeliveryServerViewModel {
 
     @ObservationIgnored private var server: GATTServer?
-    @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
+    @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPumpEnhancement?
 
     var consoleMessages: String = ""
     var isServerBusy = false {
@@ -65,6 +65,8 @@ class InsulinDeliveryServerViewModel {
     var isTempBasalString: String = ""
     var bolusDeliveryString: String = ""
     
+    var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
+    
     @ObservationIgnored private var serverName: String?
     
     func startServer(serverName: String? = nil) {
@@ -76,7 +78,7 @@ class InsulinDeliveryServerViewModel {
         self.server?.delegate = self
 
         let messageQueue = MessageQueue(gattService: server)
-        mockInsulinDeliveryPump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
+        mockInsulinDeliveryPump = MockInsulinDeliveryPumpEnhancement(gattServer: server, messageQueue: messageQueue)
         mockInsulinDeliveryPump?.delegate = self
         mockPumpDidUpdate(mockInsulinDeliveryPump!)
     }
@@ -105,7 +107,6 @@ class InsulinDeliveryServerViewModel {
 }
 
 // MARK: - Console Out Delegate
-
 extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
     func displayMessageInConsole(message: String) {
         DispatchQueue.main.async {
@@ -115,7 +116,6 @@ extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
 }
 
 // MARK: - GATT Service Delegate
-
 extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
@@ -135,11 +135,28 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 }
 
 // MARK: - Annunciations
-
 extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
+    }
+}
+
+// MARK: - Status Changed
+extension InsulinDeliveryServerViewModel {
+    func issueStatusChanged() {
+        guard !statusChangedSelection.isEmpty else { return }
+        var statusChangedToSend: IDStatusChangedFlagEnhancement = []
+        statusChangedSelection.forEach {
+            statusChangedToSend.insert($0)
+        }
+        mockInsulinDeliveryPump?.triggerStatusChangedIndicationsEnhancement(for: statusChangedToSend)
+    }
+}
+
+extension MockInsulinDeliveryPumpEnhancement {
+    func triggerStatusChangedIndicationsEnhancement(for statusChanges: IDStatusChangedFlagEnhancement) {
+        statusChangedCharacteristic.triggerIndication(for: statusChanges.originalFlags)
     }
 }
 

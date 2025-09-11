@@ -44,7 +44,7 @@ struct InsulinDeliveryClientView: View {
                         
                         statusReaderControls
                         
-                        //                    selectedStatus
+                        selectedStatus
                         
                         commandControls
                         
@@ -213,30 +213,30 @@ struct InsulinDeliveryClientView: View {
         }
     }
     
-//    @ViewBuilder
-//    private var selectedStatus: some View {
-//        RoundedCard(title: "Get Selected Status Information") {
-//            Toggle("Status", isOn: $viewModel.selectedStatus)
-//            Toggle("Status Changed", isOn: $viewModel.selectedStatusChanged)
-//            Toggle("Annunciation Status", isOn: $viewModel.selectedAnnunciationStatus)
-//            Toggle("Active Basal Rate Delivery", isOn: $viewModel.selectedActiveBasalRate)
-//            Toggle("Active Bolus IDs", isOn: $viewModel.selectedActiveBolusIDs)
-//            Toggle("Active Bolus Delivery (Programmed)", isOn: $viewModel.selectedActiveBolusProgrammed)
-//            Toggle("Active Bolus Delivery (Delivered)", isOn: $viewModel.selectedActiveBolusDelivered)
-//            Toggle("Active Bolus Delivery (Remaining)", isOn: $viewModel.selectedActiveBolusRemaining)
-//            Toggle("Available Boluses", isOn: $viewModel.selectedAvailableBolus)
-//            Toggle("Total Daily Insulin", isOn: $viewModel.selectedTotalDailyInsulin)
-//            Toggle("Get Delivered Insulin", isOn: $viewModel.selectedDeliveredInsulin)
-//            Button(action: viewModel.getSelectedStatusInformation) {
-//                Text("Get Selected Status")
-//            }
-//            .padding()
-//            if let message = viewModel.selectedStatusMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
+    @ViewBuilder
+    private var selectedStatus: some View {
+        RoundedCard(title: "Get Selected Status Information") {
+            Toggle("Status", isOn: $viewModel.selectedStatus)
+            Toggle("Status Changed", isOn: $viewModel.selectedStatusChanged)
+            Toggle("Annunciation Status", isOn: $viewModel.selectedAnnunciationStatus)
+            Toggle("Active Basal Rate Delivery", isOn: $viewModel.selectedActiveBasalRate)
+            Toggle("Active Bolus IDs", isOn: $viewModel.selectedActiveBolusIDs)
+            Toggle("Active Bolus Delivery (Programmed)", isOn: $viewModel.selectedActiveBolusProgrammed)
+            Toggle("Active Bolus Delivery (Delivered)", isOn: $viewModel.selectedActiveBolusDelivered)
+            Toggle("Active Bolus Delivery (Remaining)", isOn: $viewModel.selectedActiveBolusRemaining)
+            Toggle("Available Boluses", isOn: $viewModel.selectedAvailableBolus)
+            Toggle("Total Daily Insulin", isOn: $viewModel.selectedTotalDailyInsulin)
+            Toggle("Get Delivered Insulin", isOn: $viewModel.selectedDeliveredInsulin)
+            Button(action: viewModel.getSelectedStatusInformation) {
+                Text("Get Selected Status")
+            }
+            .padding()
+            if let message = viewModel.selectedStatusMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
     
     private var statusReaderControls: some View {
         RoundedCard(title: "Status Reader") {
@@ -315,7 +315,7 @@ struct InsulinDeliveryClientView: View {
             HStack {
                 Text("Bolus ID")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Bolus ID", number: $viewModel.bolusIDString)
+                NumberEntryEntryView(title: "Enter ID", number: $viewModel.bolusIDString)
             }
             SingleSelectionCheckList<BolusValueSelection>(items: BolusValueSelection.allCases, selectedItem: $viewModel.bolusValueSelection)
             Button(action: { viewModel.getActiveBolusDelivery() }) {
@@ -455,7 +455,7 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Basal Profile Number")
+                Text("Basal Profile")
                 Spacer()
                 NumberEntryEntryView(title: "Enter Profile Number", number: $viewModel.basalProfileNumberString)
             }
@@ -475,7 +475,7 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Temp Basal Amount")
+                Text("Temp Basal")
                 Spacer()
                 NumberEntryEntryView(title: "Enter Amount", number: $viewModel.tempBasalAmountString)
             }
@@ -496,9 +496,9 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Bolus Amount")
+                Text("Bolus")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Bolus Amount", number: $viewModel.bolusAmountString)
+                NumberEntryEntryView(title: "Enter Amount", number: $viewModel.bolusAmountString)
             }
             Button(action: viewModel.setBolus) {
                 Text("Set Bolus")
@@ -506,7 +506,7 @@ struct InsulinDeliveryClientView: View {
             HStack {
                 Text("Bolus ID")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Bolus ID", number: $viewModel.bolusIDString)
+                NumberEntryEntryView(title: "Enter ID", number: $viewModel.bolusIDString)
             }
             Button(action: viewModel.cancelBolus) {
                 Text("Cancel Bolus")
@@ -545,9 +545,9 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Profile Template Number")
+                Text("Profile Template")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Template Number", number: $viewModel.profileTemplateNumberString)
+                NumberEntryEntryView(title: "Enter Number", number: $viewModel.profileTemplateNumberString)
             }
             Button(action: viewModel.resetTemplateStatus) {
                 Text("Reset Profile Template")
@@ -577,9 +577,9 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Priming Amount")
+                Text("Priming")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Priming Amount", number: $viewModel.primingAmountString)
+                NumberEntryEntryView(title: "Enter Amount", number: $viewModel.primingAmountString)
             }
             Button(action: viewModel.startPriming) {
                 Text("Start Priming")
@@ -597,9 +597,9 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Initial Reservoir Fill Level")
+                Text("Initial Reservoir Fill")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Initial Fill Level", number: $viewModel.initialReservoirFillLevelString)
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.initialReservoirFillLevelString)
             }
             Button(action: viewModel.setInitialReservoirFillLevel) {
                 Text("Set Initial Reservoir Fill Level")
@@ -614,9 +614,9 @@ struct InsulinDeliveryClientView: View {
         VStack {
             Divider()
             HStack {
-                Text("Max Bolus Amount")
+                Text("Max Bolus")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Max Bolus Amount", number: $viewModel.maxBolusAmountString)
+                NumberEntryEntryView(title: "Enter Amount", number: $viewModel.maxBolusAmountString)
             }
             Button(action: viewModel.setMaxBolusAmount) {
                 Text("Set Max Bolus Amount")

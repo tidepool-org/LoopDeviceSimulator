@@ -220,7 +220,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             return
         case InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID:
             print("Data from status changed characteristic")
-            let result = IDStatusChangedDataHandler.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
+            let result = IDStatusChangedDataHandlerEnhancement.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
             message = String(describing: result)
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
             delegate?.characteristicIndicationMessage(characteristic.uuid, message: message)
@@ -298,8 +298,8 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
                         message = "ATT Error: Procedure Already In Progress (\(cbError.code.rawValue))"
                     } else if cbError.code.rawValue == CBATTError.Code.outOfRange.rawValue {
                         message = "ATT Error: Out Of Range (\(cbError.code.rawValue))"
-                    } else if cbError.code.rawValue == CBATTError.Code.incorrectTimeFormat.rawValue {
-                        message = "ATT Error: Incorrect Time Format (\(cbError.code.rawValue))"
+                    } else if cbError.code.rawValue == CBATTError.Code.commandNotSupported.rawValue {
+                        message = "ATT Error: Command not supported Time Format (\(cbError.code.rawValue))"
                     }
                 }
             }
@@ -514,10 +514,10 @@ extension InsulinDeliveryController {
         sendStatusReaderControlPointRequest(request: request, completion: completion)
     }
 
-//    func getSelectedStatus(_ selectedStatusFlags: IDSelectedStatusFlag, completion: @escaping MessageCompletion) {
-//        let request = statusReaderControlPoint.getSelectedStatusInformationCmd(selectedStatusFlags)
-//        writeCharacteristic(uuid: InsulinDeliveryConstants.statusReaderControlPointCharCBUUID, request: request, completion: completion)
-//    }
+    func getSelectedStatus(_ selectedStatusFlags: IDSelectedStatusFlag, completion: @escaping MessageCompletion) {
+        let request = statusReaderControlPoint.createGetSelectedStatusInformationRequest(selectedStatusFlags)
+        writeCharacteristic(uuid: InsulinDeliveryCharacteristicUUID.statusReaderControlPoint.cbUUID, request: request, completion: completion)
+    }
     
     func sendStatusReaderControlPointRequest(request: Data, completion: @escaping MessageCompletion) {
         var request = request
@@ -525,6 +525,12 @@ extension InsulinDeliveryController {
             request = request.appendingCRC()
         }
         writeCharacteristic(uuid: InsulinDeliveryCharacteristicUUID.statusReaderControlPoint.cbUUID, request: request, completion: completion)
+    }
+}
+
+extension IDStatusReaderControlPointDataHandler {
+    func createGetSelectedStatusInformationRequest(_ selectedStatusFlags: IDSelectedStatusFlag) -> Data {
+        buildRequest(.getSelectedStatusInformation, operand: Data(selectedStatusFlags.rawValue))
     }
 }
 

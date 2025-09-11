@@ -140,29 +140,29 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     @Published var selectedDeliveredInsulin: Bool = false
     @Published var selectedStatusMessage: String? = nil
    
-//    func getSelectedStatusInformation() {
-//        selectedStatusMessage = nil
-//        var selectedStatuses: IDDSelectedStatusFlag = .allZeros
-//        if selectedStatus { selectedStatuses.insert(.statusIndication) }
-//        if selectedStatusChanged { selectedStatuses.insert(.statusChangedIndication) }
-//        if selectedAnnunciationStatus { selectedStatuses.insert(.annunciationStatusIndication) }
-//        if selectedActiveBasalRate { selectedStatuses.insert(.getActiveBasalRateDelivery) }
-//        if selectedActiveBolusIDs { selectedStatuses.insert(.getActiveBolusIDs) }
-//        if selectedActiveBolusProgrammed { selectedStatuses.insert(.getActiveBolusProgrammed) }
-//        if selectedActiveBolusDelivered { selectedStatuses.insert(.getActiveBolusDelivered) }
-//        if selectedActiveBolusRemaining { selectedStatuses.insert(.getActiveBolusRemaining) }
-//        if selectedAvailableBolus { selectedStatuses.insert(.getAvailableBoluses) }
-//        if selectedTotalDailyInsulin { selectedStatuses.insert(.getTotalDailyInsulinStatus) }
-//        if selectedDeliveredInsulin { selectedStatuses.insert(.getDeliveredInsulin) }
-//        insulinDeliveryController?.getSelectedStatus(selectedStatuses) { message in
-//            var statusMessages: String = ""
-//            if let selectedStatusMessage = self.selectedStatusMessage {
-//                statusMessages = selectedStatusMessage
-//            }
-//            statusMessages.append("\n\n\(message)")
-//            self.selectedStatusMessage = statusMessages
-//        }
-//    }
+    func getSelectedStatusInformation() {
+        selectedStatusMessage = nil
+        var selectedStatuses: IDSelectedStatusFlag = .allZeros
+        if selectedStatus { selectedStatuses.insert(.statusIndication) }
+        if selectedStatusChanged { selectedStatuses.insert(.statusChangedIndication) }
+        if selectedAnnunciationStatus { selectedStatuses.insert(.annunciationStatusIndication) }
+        if selectedActiveBasalRate { selectedStatuses.insert(.getActiveBasalRateDelivery) }
+        if selectedActiveBolusIDs { selectedStatuses.insert(.getActiveBolusIDs) }
+        if selectedActiveBolusProgrammed { selectedStatuses.insert(.getActiveBolusProgrammed) }
+        if selectedActiveBolusDelivered { selectedStatuses.insert(.getActiveBolusDelivered) }
+        if selectedActiveBolusRemaining { selectedStatuses.insert(.getActiveBolusRemaining) }
+        if selectedAvailableBolus { selectedStatuses.insert(.getAvailableBoluses) }
+        if selectedTotalDailyInsulin { selectedStatuses.insert(.getTotalDailyInsulinStatus) }
+        if selectedDeliveredInsulin { selectedStatuses.insert(.getDeliveredInsulin) }
+        insulinDeliveryController?.getSelectedStatus(selectedStatuses) { message in
+            var statusMessages: String = ""
+            if let selectedStatusMessage = self.selectedStatusMessage {
+                statusMessages = selectedStatusMessage
+            }
+            statusMessages.append("\n\n\(message)")
+            self.selectedStatusMessage = statusMessages
+        }
+    }
     
     // MARK: - Status Reader
     @Published var resetStatusMessage: String? = nil

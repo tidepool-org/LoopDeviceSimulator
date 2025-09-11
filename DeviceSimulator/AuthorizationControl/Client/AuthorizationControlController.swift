@@ -236,8 +236,8 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
                         message = "ATT Error: Procedure Already In Progress (\(cbError.code.rawValue))"
                     } else if cbError.code.rawValue == CBATTError.Code.outOfRange.rawValue {
                         message = "ATT Error: Out Of Range (\(cbError.code.rawValue))"
-                    } else if cbError.code.rawValue == CBATTError.Code.incorrectTimeFormat.rawValue {
-                        message = "ATT Error: Incorrect Time Format (\(cbError.code.rawValue))"
+                    } else if cbError.code.rawValue == CBATTError.Code.commandNotSupported.rawValue {
+                        message = "ATT Error: Command not supported (\(cbError.code.rawValue))"
                     }
                 }
             }

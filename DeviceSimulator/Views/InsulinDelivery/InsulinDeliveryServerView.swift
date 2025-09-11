@@ -64,8 +64,19 @@ struct InsulinDeliveryServerView: View {
         }
         
         RoundedCard(title: "Controls") {
+            triggerStatusChanged
             triggerAnnunciations
             sendSecureMessage
+        }
+    }
+    
+    private var triggerStatusChanged: some View {
+        RoundedCard(title: "Status Changed") {
+            MultiSelectionCheckList(items: IDStatusChangedFlagEnhancement.allCases, selectedItems: $viewModel.statusChangedSelection)
+            Button(action: viewModel.issueStatusChanged) {
+                Text("Issue Status Changed")
+            }
+            .padding()
         }
     }
     
