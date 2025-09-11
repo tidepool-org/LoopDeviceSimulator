@@ -9,13 +9,6 @@
 import Foundation
 import InsulinDeliveryServiceKit
 
-public class IDStatusCharacteristicEnhancement: IDStatusCharacteristic {
-//    override public func createData() -> Data {
-//        flags.insert(.reservoirRemainingAmountAccurate)
-//        return super.createData()
-//    }
-}
-
 extension IDStatusFlag {
     static let reservoirRemainingAmountAccurate  = IDStatusFlag(rawValue: 1 << 1)
         
