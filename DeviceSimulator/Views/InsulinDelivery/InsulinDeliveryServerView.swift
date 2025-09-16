@@ -64,6 +64,7 @@ struct InsulinDeliveryServerView: View {
         }
         
         RoundedCard(title: "Controls") {
+            localBolus
             statusFlags
             triggerStatusChanged
             triggerAnnunciations
@@ -71,14 +72,28 @@ struct InsulinDeliveryServerView: View {
         }
     }
     
+    private var localBolus: some View {
+        RoundedCard(title: "Local Bolus") {
+            HStack {
+                Text("Local Bolus Amount")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.localBolusAmountString)
+            }
+            Button(action: viewModel.startLocalBolus) {
+                Text("Start Local Bolus")
+            }
+        }
+    }
+    
     private var statusFlags: some View {
         RoundedCard(title: "Status Flags") {
+            Divider()
             MultiSelectionCheckList(items: IDStatusFlag.allCases, selectedItems: $viewModel.statusFlags)
         }
     }
     
     private var triggerStatusChanged: some View {
         RoundedCard(title: "Status Changed") {
+            Divider()
             MultiSelectionCheckList(items: IDStatusChangedFlagEnhancement.allCases, selectedItems: $viewModel.statusChangedSelection)
             Button(action: viewModel.issueStatusChanged) {
                 Text("Issue Status Changed")
@@ -89,6 +104,7 @@ struct InsulinDeliveryServerView: View {
     
     private var triggerAnnunciations: some View {
         RoundedCard(title: "Annunciations") {
+            Divider()
             mockPumpIssueAnnunciation
             Button(action: viewModel.issueAnnunciation) {
                 Text("Issue Annunciation")
@@ -128,6 +144,7 @@ struct InsulinDeliveryServerView: View {
     
     private var sendSecureMessage: some View {
         RoundedCard(title: "Secure Messaging") {
+            Divider()
             Button(action: viewModel.sendSecureIndication) {
                 Text("Send secure indication")
             }

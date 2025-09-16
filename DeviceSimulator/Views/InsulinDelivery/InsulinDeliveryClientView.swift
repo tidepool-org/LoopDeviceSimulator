@@ -405,6 +405,7 @@ struct InsulinDeliveryClientView: View {
             setInitialResevoirFillLevel
             maxBolusAmountControls
             maxBasalRateControls
+            localBolusControls
         }
     }
     
@@ -652,31 +653,32 @@ struct InsulinDeliveryClientView: View {
         }
     }
 
-//    private var localBolusControls: some View {
-//        VStack {
-//            Toggle("Local Bolus Status", isOn: $viewModel.localBolusStatus)
-//            HStack {
-//                Text("Local Bolus Step Size")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.localBolusStepValueString)
-//            }
-//            HStack {
-//                Text("Local Bolus Max Amount")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.localBolusMaxAmountString)
-//            }
-//            Button(action: viewModel.getLocalBolusParameters) {
-//                Text("Get Local Bolus Parameters")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.setLocalBolusParameters) {
-//                Text("Set Local Bolus Parameters")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.localBolusMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
+    private var localBolusControls: some View {
+        VStack {
+            Divider()
+            Toggle("Local Bolus Status", isOn: $viewModel.localBolusStatus)
+            HStack {
+                Text("Local Bolus Step Size")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.localBolusStepValueString)
+            }
+            HStack {
+                Text("Local Bolus Max Amount")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.localBolusMaxAmountString)
+            }
+            Button(action: viewModel.getLocalBolusParameters) {
+                Text("Get Local Bolus Parameters")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setLocalBolusParameters) {
+                Text("Set Local Bolus Parameters")
+            }
+            .padding(.vertical)
+            if let message = viewModel.localBolusMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
 //    private var autoStopControls: some View {
 //        VStack {
 //            Toggle("Automatic Stop Status", isOn: $viewModel.autoStopStatus)
@@ -850,26 +852,6 @@ struct InsulinDeliveryClientView: View {
 
     private var maxRecordNumberEntry: some View {
         NumberEntryEntryView(title: "Enter Max Record Number", number: $viewModel.maxRecordNumberString)
-    }
-
-    struct NumberEntryEntryView: View {
-        let title: String
-        @Binding var number: String
-
-        var body: some View {
-            DismissibleKeyboardTextField(
-                text: $number,
-                placeholder: title,
-                font: .preferredFont(forTextStyle: .headline),
-                textColor: .blue,
-                textAlignment: .right,
-                keyboardType: .decimalPad,
-                shouldBecomeFirstResponder: false,
-                maxLength: 5,
-                doneButtonColor: UIColor(Color.accentColor),
-                textFieldDidBeginEditing: nil
-            )
-        }
     }
 
     @ViewBuilder
