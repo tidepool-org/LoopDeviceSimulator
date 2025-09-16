@@ -687,141 +687,140 @@ extension InsulinDeliveryClientViewModel {
         }
     }
     
+    func getMaxBasalRateAmount() {
+        maxBasalRateMessage = nil
+        sendCommand(.getMaxBasalRateAmount) { message in
+            self.maxBasalRateMessage = (self.maxBasalRateMessage ?? "") + "\n\n" + message
+        }
+    }
     
-//    func getMaxBasalRateAmount() {
-//        maxBasalRateMessage = nil
-//        sendCommand(.getMaxBasalRateAmount) { message in
-//            self.maxBasalRateMessage = (self.maxBasalRateMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setMaxBasalRateAmount() {
-//        maxBasalRateMessage = nil
-//        let operand = Data(maxBasalRateAmount.sfloat)
-//        sendCommand(.setMaxBasalRateAmount, operand: operand) { message in
-//            self.maxBasalRateMessage = (self.maxBasalRateMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getLocalBolusParameters() {
-//        localBolusMessage = nil
-//        sendCommand(.getLocalBolusParameters) { message in
-//            self.localBolusMessage = (self.localBolusMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setLocalBolusParameters() {
-//        localBolusMessage = nil
-//        var operand = localBolusStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        if localBolusStatus {
-//            operand.append(localBolsuStepValue.sfloat)
-//            operand.append(localBolusMaxAmount.sfloat)
-//        }
-//        sendCommand(.setLocalBolusParameters, operand: operand) { message in
-//            self.localBolusMessage = (self.localBolusMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getAutoStopParameters() {
-//        autoStopMessage = nil
-//        sendCommand(.getAutomaticStopParameters) { message in
-//            self.autoStopMessage = (self.autoStopMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setAutoStopParameters() {
-//        autoStopMessage = nil
-//        var operand = autoStopStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        if autoStopStatus {
-//            operand.append(maxAutoStopTimeout)
-//        }
-//        sendCommand(.setAutomaticStopParameters, operand: operand) { message in
-//            self.autoStopMessage = (self.autoStopMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func resetAutoStopTimeout() {
-//        resetAutoStopMessage = nil
-//        let operand = Data(lastUserInteraction)
-//        sendCommand(.resetAutomaticStopTimeout, operand: operand) { message in
-//            self.resetAutoStopMessage = (self.resetAutoStopMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getSuspendSignalParameters() {
-//        suspendSignalMessage = nil
-//        sendCommand(.getAcousticSignalSuspensionParameters) { message in
-//            self.suspendSignalMessage = (self.suspendSignalMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setSuspendSignalParameters() {
-//        suspendSignalMessage = nil
-//        var operand = suspendSignalStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        if suspendSignalStatus {
-//            operand.append(suspendSignalStartTime)
-//            operand.append(suspendSignalDuration)
-//            operand.append(suspendSignalRepeats ? IDDRepeatFlag.repeating.rawValue : IDDRepeatFlag.once.rawValue)
-//        }
-//        sendCommand(.setAcousticSignalSuspensionParameters, operand: operand) { message in
-//            self.suspendSignalMessage = (self.suspendSignalMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getLifetimeWarningLimit() {
-//        lifetimeWarningLimitMessage = nil
-//        sendCommand(.getLifetimeWarningLimit) { message in
-//            self.lifetimeWarningLimitMessage = (self.lifetimeWarningLimitMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setLifetimeWarningLimit() {
-//        lifetimeWarningLimitMessage = nil
-//        var operand = lifetimeWarningLimitStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        if lifetimeWarningLimitStatus {
-//            operand.append(lifetimeWarningLimit)
-//        }
-//        sendCommand(.setLifetimeWarningLimit, operand: operand) { message in
-//            self.lifetimeWarningLimitMessage = (self.lifetimeWarningLimitMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getReservoirLevelWarningLimit() {
-//        reservoirLevelWarningLimitMessage = nil
-//        sendCommand(.getReservoirLevelWarningLimit) { message in
-//            self.reservoirLevelWarningLimitMessage = (self.reservoirLevelWarningLimitMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setReservoirLevelWarningLimit() {
-//        reservoirLevelWarningLimitMessage = nil
-//        var operand = reservoirLevelWarningLimitStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        if reservoirLevelWarningLimitStatus {
-//            operand.append(reservoirLevelWarningLimit.sfloat)
-//        }
-//        sendCommand(.setReservoirLevelWarningLimit, operand: operand) { message in
-//            self.reservoirLevelWarningLimitMessage = (self.reservoirLevelWarningLimitMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func getInsulinDeliveryStartSoundParameters() {
-//        insulinDeliveryStartSoundParametersMessage = nil
-//        sendCommand(.getInsulinDeliveryStartSoundParameters) { message in
-//            self.insulinDeliveryStartSoundParametersMessage = (self.insulinDeliveryStartSoundParametersMessage ?? "") + "\n\n" + message
-//        }
-//    }
-//    
-//    func setInsulinDeliveryStartSoundParameters() {
-//        insulinDeliveryStartSoundParametersMessage = nil
-//        let operand = insulinDeliveryStartSoundStatus ? Data(IDDStatusFlag.enabled.rawValue) : Data(IDDStatusFlag.disabled.rawValue)
-//        sendCommand(.setInsulinDeliveryStartSoundParameters, operand: operand) { message in
-//            self.insulinDeliveryStartSoundParametersMessage = (self.insulinDeliveryStartSoundParametersMessage ?? "") + "\n\n" + message
-//        }
-//    }
+    func setMaxBasalRateAmount() {
+        maxBasalRateMessage = nil
+        let operand = Data(maxBasalRateAmount.sfloat)
+        sendCommand(.setMaxBasalRateAmount, operand: operand) { message in
+            self.maxBasalRateMessage = (self.maxBasalRateMessage ?? "") + "\n\n" + message
+        }
+    }
     
-//    func sendCommand(_ opcode: IDCommandControlPointOpcode, operand: Data? = nil, completion: @escaping MessageCompletion) {
-//        insulinDeliveryController?.sendCommand(opcode: opcode, operand: operand, completion: completion)
-//    }
+    func getLocalBolusParameters() {
+        localBolusMessage = nil
+        sendCommand(.getLocalBolusParameters) { message in
+            self.localBolusMessage = (self.localBolusMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setLocalBolusParameters() {
+        localBolusMessage = nil
+        var operand = localBolusStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        if localBolusStatus {
+            operand.append(localBolsuStepValue.sfloat)
+            operand.append(localBolusMaxAmount.sfloat)
+        }
+        sendCommand(.setLocalBolusParameters, operand: operand) { message in
+            self.localBolusMessage = (self.localBolusMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func getAutoStopParameters() {
+        autoStopMessage = nil
+        sendCommand(.getAutomaticStopParameters) { message in
+            self.autoStopMessage = (self.autoStopMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setAutoStopParameters() {
+        autoStopMessage = nil
+        var operand = autoStopStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        if autoStopStatus {
+            operand.append(maxAutoStopTimeout)
+        }
+        sendCommand(.setAutomaticStopParameters, operand: operand) { message in
+            self.autoStopMessage = (self.autoStopMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func resetAutoStopTimeout() {
+        resetAutoStopMessage = nil
+        let operand = Data(lastUserInteraction)
+        sendCommand(.resetAutomaticStopTimeout, operand: operand) { message in
+            self.resetAutoStopMessage = (self.resetAutoStopMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func getSuspendSignalParameters() {
+        suspendSignalMessage = nil
+        sendCommand(.getAcousticSignalSuspensionParameters) { message in
+            self.suspendSignalMessage = (self.suspendSignalMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setSuspendSignalParameters() {
+        suspendSignalMessage = nil
+        var operand = suspendSignalStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        if suspendSignalStatus {
+            operand.append(suspendSignalStartTime)
+            operand.append(suspendSignalDuration)
+            operand.append(suspendSignalRepeats ? IDRepeatFlag.repeating.rawValue : IDRepeatFlag.once.rawValue)
+        }
+        sendCommand(.setAcousticSignalSuspensionParameters, operand: operand) { message in
+            self.suspendSignalMessage = (self.suspendSignalMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func getLifetimeWarningLimit() {
+        lifetimeWarningLimitMessage = nil
+        sendCommand(.getLifetimeWarningLimit) { message in
+            self.lifetimeWarningLimitMessage = (self.lifetimeWarningLimitMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setLifetimeWarningLimit() {
+        lifetimeWarningLimitMessage = nil
+        var operand = lifetimeWarningLimitStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        if lifetimeWarningLimitStatus {
+            operand.append(lifetimeWarningLimit)
+        }
+        sendCommand(.setLifetimeWarningLimit, operand: operand) { message in
+            self.lifetimeWarningLimitMessage = (self.lifetimeWarningLimitMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func getReservoirLevelWarningLimit() {
+        reservoirLevelWarningLimitMessage = nil
+        sendCommand(.getReservoirLevelWarningLimit) { message in
+            self.reservoirLevelWarningLimitMessage = (self.reservoirLevelWarningLimitMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setReservoirLevelWarningLimit() {
+        reservoirLevelWarningLimitMessage = nil
+        var operand = reservoirLevelWarningLimitStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        if reservoirLevelWarningLimitStatus {
+            operand.append(reservoirLevelWarningLimit.sfloat)
+        }
+        sendCommand(.setReservoirLevelWarningLimit, operand: operand) { message in
+            self.reservoirLevelWarningLimitMessage = (self.reservoirLevelWarningLimitMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func getInsulinDeliveryStartSoundParameters() {
+        insulinDeliveryStartSoundParametersMessage = nil
+        sendCommand(.getInsulinDeliveryStartSoundParameters) { message in
+            self.insulinDeliveryStartSoundParametersMessage = (self.insulinDeliveryStartSoundParametersMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func setInsulinDeliveryStartSoundParameters() {
+        insulinDeliveryStartSoundParametersMessage = nil
+        let operand = insulinDeliveryStartSoundStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
+        sendCommand(.setInsulinDeliveryStartSoundParameters, operand: operand) { message in
+            self.insulinDeliveryStartSoundParametersMessage = (self.insulinDeliveryStartSoundParametersMessage ?? "") + "\n\n" + message
+        }
+    }
+    
+    func sendCommand(_ opcode: IDCommandControlPointOpcode, operand: Data? = nil, completion: @escaping MessageCompletion) {
+        insulinDeliveryController?.sendCommand(opcode: opcode, operand: operand, completion: completion)
+    }
 }
 
 // MARK: - RACP Commands

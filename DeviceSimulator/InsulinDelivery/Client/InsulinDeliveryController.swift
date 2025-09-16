@@ -27,7 +27,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
     var centralManager: CBCentralManager?
     var connectedPeripheral: CBPeripheral?
     let statusReaderControlPoint: IDStatusReaderControlPointDataHandler
-    let commandControlPoint: IDCommandControlPointDataHandler
+    let commandControlPoint: IDCommandControlPointDataHandlerEnhancement
     let racp: IDRecordAccessControlPointDataHandler
     let deviceTime: DeviceTimeDataHandler
     let deviceTimeControlPoint: DTControlPointDataHandler
@@ -50,7 +50,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
         basalManager = BasalManager()
         bolusManager = BolusManager()
         statusReaderControlPoint = IDStatusReaderControlPointDataHandler(bolusManager: bolusManager, basalManager: basalManager)
-        commandControlPoint = IDCommandControlPointDataHandler(bolusManager: bolusManager, basalManager: basalManager)
+        commandControlPoint = IDCommandControlPointDataHandlerEnhancement(bolusManager: bolusManager, basalManager: basalManager)
         racp = IDRecordAccessControlPointDataHandler()
         deviceTime = DeviceTimeDataHandler()
         deviceTimeControlPoint = DTControlPointDataHandler()
@@ -641,6 +641,11 @@ extension InsulinDeliveryController {
     
     func setMaxBolusAmount(_ amount: Double, completion: @escaping MessageCompletion) {
         let request = commandControlPoint.createSetMaxBolusAmountRequest(amount)
+        sendCommandControlPointRequest(request: request, completion: completion)
+    }
+    
+    func sendCommand(opcode: IDCommandControlPointOpcode, operand: Data? = nil, completion: @escaping MessageCompletion) {
+        let request = commandControlPoint.buildRequest(opcode, operand: operand)
         sendCommandControlPointRequest(request: request, completion: completion)
     }
     

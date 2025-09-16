@@ -22,6 +22,8 @@ class MockInsulinDeliveryPumpEnhancement: MockInsulinDeliveryPump {
     override class func createWritableCharacteristic<T: WritableCharacteristic>(of type: T.Type, messageQueue: any MessagingQueue) -> T {
         if type == IDStatusReaderControlPointCharacteristic.self {
             return IDStatusReaderControlPointEnhancement(messageQueue: messageQueue) as! T
+        } else if type == IDCommandControlPointCharacteristic.self {
+            return IDCommandControlPointEnhancement(messageQueue: messageQueue) as! T
         } else {
             return T(messageQueue: messageQueue)
         }

@@ -79,7 +79,7 @@ class IDStatusReaderControlPointEnhancement: IDStatusReaderControlPointCharacter
         flags.insert(.amountDeliveredPresent)
         response.append(amountDelivered.sfloat)
         
-        response.insert(flags.rawValue, at: 1)
+        response.insert(flags.rawValue, at: 2)
         return addE2EProtection(response: response)
     }
     

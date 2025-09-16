@@ -248,30 +248,6 @@ extension IDCommandControlPointOpcode {
     }
 }
 
-enum IDStateFlag: UInt8 {
-    case enabled = 0x0f
-    case disabled = 0x33
-    
-    public var description: String {
-        switch self {
-        case .enabled: return "enabled"
-        case .disabled: return "disabled"
-        }
-    }
-}
-
-enum IDRepeatFlag: UInt8 {
-    case once = 0x0f
-    case repeating = 0x33
-    
-    public var description: String {
-        switch self {
-        case .once: return "once"
-        case .repeating: return "repeating"
-        }
-    }
-}
-
 extension IDHistoryEventType {
     static public let localBolusParametersChanged = IDHistoryEventType(rawValue: 0xc000)
     static public let automaticStopParametersChanged = IDHistoryEventType(rawValue: 0xc003)

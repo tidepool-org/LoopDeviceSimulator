@@ -404,6 +404,7 @@ struct InsulinDeliveryClientView: View {
             primingControls
             setInitialResevoirFillLevel
             maxBolusAmountControls
+            maxBasalRateControls
         }
     }
     
@@ -629,27 +630,28 @@ struct InsulinDeliveryClientView: View {
             }
         }
     }
-//
-//    private var maxBasalRateControls: some View {
-//        VStack {
-//            HStack {
-//                Text("Max Basal Rate Amount")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.maxBasalRateAmountString)
-//            }
-//            Button(action: viewModel.getMaxBasalRateAmount) {
-//                Text("Get Max Basal Rate")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.setMaxBasalRateAmount) {
-//                Text("Set Max Basal Rate")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.maxBasalRateMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
+
+    private var maxBasalRateControls: some View {
+        VStack {
+            Divider()
+            HStack {
+                Text("Max Basal Rate Amount")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.maxBasalRateAmountString)
+            }
+            Button(action: viewModel.getMaxBasalRateAmount) {
+                Text("Get Max Basal Rate")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setMaxBasalRateAmount) {
+                Text("Set Max Basal Rate")
+            }
+            .padding(.vertical)
+            if let message = viewModel.maxBasalRateMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
 //    private var localBolusControls: some View {
 //        VStack {
 //            Toggle("Local Bolus Status", isOn: $viewModel.localBolusStatus)
