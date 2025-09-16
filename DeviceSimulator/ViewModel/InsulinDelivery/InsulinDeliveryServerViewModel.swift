@@ -224,6 +224,7 @@ class InsulinDeliveryServerViewModel {
             persistSettings()
         }
     }
+    var localBolusAmountString: String = ""
 
     var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
     var statusFlags: [IDStatusFlag] = [] {
@@ -456,6 +457,11 @@ class InsulinDeliveryServerViewModel {
 
     func clearConsole() {
         consoleMessages.removeAll()
+    }
+    
+    func startLocalBolus() {
+        guard let localBolusAmount = Double(localBolusAmountString) else { return }
+        _ = mockInsulinDeliveryPump?.setBolus(localBolusAmount, activationType: .manualBolus)
     }
 }
 
