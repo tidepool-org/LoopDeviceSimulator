@@ -13,6 +13,7 @@ import BluetoothCommonKit
 struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
     private var insulinDeliveryServerViewModel = InsulinDeliveryServerViewModel()
     private var insulinDeliveryClientViewModel = InsulinDeliveryClientViewModel()
+    private var authorizationControlClientViewModel = AuthorizationControlClientViewModel()
 
     @State private var serverName: String = InsulinDeliveryConstants.serverName
     
@@ -34,6 +35,9 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
                         NavigationLink(destination: insulinDeliveryClientView) {
                             Text("Insulin Delivery Client")
                         }
+                        NavigationLink(destination: authorizationControlClientView) {
+                            Text("Authorization Control Client")
+                        }
                     }
                 }
                 .navigationTitle("Simulator \(Bundle.main.fullVersionString)")
@@ -48,6 +52,11 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
     
     private var insulinDeliveryClientView: some View {
         InsulinDeliveryClientView(viewModel: insulinDeliveryClientViewModel)
+            .environment(\.horizontalSizeClass, horizontalOverride)
+    }
+    
+    private var authorizationControlClientView: some View {
+        AuthorizationControlClientView(viewModel: authorizationControlClientViewModel)
             .environment(\.horizontalSizeClass, horizontalOverride)
     }
 }
