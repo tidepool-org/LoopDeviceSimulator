@@ -457,7 +457,7 @@ struct InsulinDeliveryClientView: View {
             HStack {
                 Text("Basal Profile Number")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Basal Profile Number", number: $viewModel.basalProfileNumberString)
+                NumberEntryEntryView(title: "Enter Profile Number", number: $viewModel.basalProfileNumberString)
             }
             Button(action: viewModel.readBasalProfile ) {
                 Text("Read Basal Profile")
@@ -477,9 +477,9 @@ struct InsulinDeliveryClientView: View {
             HStack {
                 Text("Temp Basal Amount")
                 Spacer()
-                NumberEntryEntryView(title: "Enter Temp Basal Amount", number: $viewModel.tempBasalAmountString)
+                NumberEntryEntryView(title: "Enter Amount", number: $viewModel.tempBasalAmountString)
             }
-            Toggle("Replace Existing Temp Basal", isOn: $viewModel.replaceExistingTempBasal)
+            Toggle("Replace Temp Basal", isOn: $viewModel.replaceExistingTempBasal)
             Button(action: viewModel.setTemplBasal) {
                 Text("Set Temp Basal")
             }
