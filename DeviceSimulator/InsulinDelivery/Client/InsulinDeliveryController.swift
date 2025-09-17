@@ -28,7 +28,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
     var connectedPeripheral: CBPeripheral?
     let statusReaderControlPoint: IDStatusReaderControlPointDataHandler
     let commandControlPoint: IDCommandControlPointDataHandlerEnhancement
-    let racp: IDRecordAccessControlPointDataHandler
+    let racp: IDRecordAccessControlPointDataHandlerEnhancement
     let deviceTime: DeviceTimeDataHandler
     let deviceTimeControlPoint: DTControlPointDataHandler
     let basalManager: BasalManager
@@ -51,7 +51,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
         bolusManager = BolusManager()
         statusReaderControlPoint = IDStatusReaderControlPointDataHandler(bolusManager: bolusManager, basalManager: basalManager)
         commandControlPoint = IDCommandControlPointDataHandlerEnhancement(bolusManager: bolusManager, basalManager: basalManager)
-        racp = IDRecordAccessControlPointDataHandler()
+        racp = IDRecordAccessControlPointDataHandlerEnhancement()
         deviceTime = DeviceTimeDataHandler()
         deviceTimeControlPoint = DTControlPointDataHandler()
         
@@ -700,6 +700,52 @@ extension InsulinDeliveryController {
             request = racp.createGetMostCurrentStoredRecordRequest()
         case .firstRecord:
             request = racp.createOldestStoredRecordRequest()
+        }
+
+        self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
+        self.completion = completion
+    }
+    
+    func requestCombinedReport(racpOperator: IDRACPOperator, minRecordNumber: RecordNumber?, maxRecordNumber: RecordNumber?, completion: @escaping MessageCompletion) {
+        guard let service = self.connectedPeripheral?.services?.first(where: {$0.uuid == InsulinDeliveryCharacteristicUUID.service.cbUUID}),
+              let characteristic = service.characteristics?.first(where: {$0.uuid == InsulinDeliveryCharacteristicUUID.recordAccessControlPoint.cbUUID})
+        else {
+            completion("Service and characteristic not available")
+            return
+        }
+
+        let request: Data
+        switch racpOperator {
+        case .nullOperator:
+            completion("Cannot use the Null Operator for requesting number of stored records")
+            return
+        case .allRecords:
+            request = racp.createGetAllCombinedReportRequest()
+        case .lessThanOrEqualTo:
+            guard let maxRecordNumber = maxRecordNumber else {
+                completion("Request stored records less than or equal to requires a max record number")
+                return
+            }
+
+            request = racp.createGetAllCombinedReportRequest(beforeIncludingRecordNumber: maxRecordNumber)
+        case .greaterThanOrEqualTo:
+            guard let minRecordNumber = minRecordNumber else {
+                completion("Request stored records less than or equal to requires a min record number")
+                return
+            }
+            request = racp.createGetAllCombinedReportRequest(afterIncludingRecordNumber: minRecordNumber)
+        case .inclusiveRange:
+            guard let maxRecordNumber = maxRecordNumber,
+                  let minRecordNumber = minRecordNumber
+            else {
+                completion("Request stored records less than or equal to requires both a min and max record number")
+                return
+            }
+            request = racp.createGetAllCombinedReportInclusiveRangeRequest(minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber)
+        case .lastRecord:
+            request = racp.createGetMostCurrentCombinedReportRequest()
+        case .firstRecord:
+            request = racp.createOldestCombinedReportRequest()
         }
 
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)

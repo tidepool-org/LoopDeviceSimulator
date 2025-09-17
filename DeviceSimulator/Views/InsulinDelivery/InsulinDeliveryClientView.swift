@@ -27,11 +27,6 @@ struct InsulinDeliveryClientView: View {
                                 Text("Display Peripheral List")
                                 Spacer()
                             }
-                            Divider()
-                            Button(action: viewModel.clearConsole) {
-                                Text("Clear Console")
-                                Spacer()
-                            }
                         }
                         
                         configurationControls
@@ -52,11 +47,7 @@ struct InsulinDeliveryClientView: View {
                         
                         RoundedCard {
                             racpCommands
-                        }
-                        
-                        RoundedCard(title: "Console") {
-                            TextEditor(text: .constant(viewModel.consoleMessages))
-                        }
+                        }                        
                     }
                 }
             } else {
@@ -835,7 +826,7 @@ struct InsulinDeliveryClientView: View {
     private var racpCommands: some View {
         VStack {
             Button(action: viewModel.requestStoredRecords) {
-                Text("Request Stored Records (Record Number)")
+                Text("Request Combined Report (Record Number)")
             }
             .padding()
             Button(action: viewModel.requestNumberOfStoredRecords) {

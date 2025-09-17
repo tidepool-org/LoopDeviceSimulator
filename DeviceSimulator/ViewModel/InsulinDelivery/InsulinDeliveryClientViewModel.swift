@@ -835,7 +835,7 @@ extension InsulinDeliveryClientViewModel {
 
     func requestStoredRecords() {
         racpMessage = nil
-        insulinDeliveryController?.requestStoredRecords(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
+        insulinDeliveryController?.requestCombinedReport(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message
         }
     }
