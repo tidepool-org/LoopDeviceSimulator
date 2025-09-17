@@ -14,9 +14,35 @@ import BluetoothCommonKit
 class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
     
     var maxBasalRate = 10.0
-    var localBolusEnabled: IDStateFlag = .disabled
+    
+    var localBolusState: IDStateFlag = .disabled
     var localBolusStepValue = 0.5
     var maxLocalBolusAmount = 20.0
+    
+    var automaticStopState: IDStateFlag = .disabled
+    var automaticStopTimeout: UInt16 = 0
+    var counterStartDate = Date()
+    var automaticStopCounter: UInt16 {
+        get {
+            UInt16(abs(counterStartDate.timeIntervalSinceNow)/60)
+        }
+        set {
+            counterStartDate = Date().addingTimeInterval(-TimeInterval(newValue * 60))
+        }
+    }
+    
+    var acousticSignalSuspensionState: IDStateFlag = .disabled
+    var acousticSignalSuspensionStartTime: TimeInterval = 0
+    var acousticSignalSuspensionDuration: TimeInterval = 0
+    var acousticSignalSuspensionRepeatStatus: IDRepeatFlag = .once
+    
+    var lifetimeWarningState: IDStateFlag = .disabled
+    var lifeTimeWarningLimitInDays: UInt16 = 0
+    
+    var reservoirWarningState: IDStateFlag = .disabled
+    var reservoirWarningLimit: Double = 0.0
+    
+    var insulinDeliveryStartSoundState: IDStateFlag = .disabled
     
     override func onWrite(_ request: Data?) -> CBATTError.Code {
         guard let request = request else {
@@ -43,10 +69,11 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             print("status: \(String(describing: status))")
             index += 1
             guard status == .enabled else {
-                localBolusEnabled = .disabled
+                respondWithSuccess(to: .setLocalBolusParameters)
+                localBolusState = .disabled
                 return CBATTError.Code.success
             }
-            localBolusEnabled = .enabled
+            localBolusState = .enabled
             let stepValue = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
             localBolusStepValue = stepValue
             print("stepValue: \(localBolusStepValue)")
@@ -54,12 +81,154 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             let maxBolusAmount = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
             maxLocalBolusAmount = maxBolusAmount
             print("maxBolusAmount: \(maxLocalBolusAmount)")
+            respondWithSuccess(to: .setLocalBolusParameters)
             return CBATTError.Code.success
         case .getLocalBolusParameters:
             var response = Data(IDCommandControlPointOpcode.getLocalBolusParametersResponse.rawValue)
-            response.append(Data(localBolusEnabled.rawValue))
+            response.append(localBolusState.rawValue)
+            guard localBolusState == .enabled else {
+                sendResponse(addE2EProtection(response: response))
+                return CBATTError.Code.success
+            }
             response.append(localBolusStepValue.sfloat)
             response.append(maxLocalBolusAmount.sfloat)
+            sendResponse(addE2EProtection(response: response))
+            return CBATTError.Code.success
+        case .setAutomaticStopParameters:
+            let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
+            print("status: \(String(describing: status))")
+            index += 1
+            guard status == .enabled else {
+                respondWithSuccess(to: .setAutomaticStopParameters)
+                automaticStopState = .disabled
+                return CBATTError.Code.success
+            }
+            automaticStopState = .enabled
+            let timeout = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            automaticStopTimeout = timeout
+            print("automaticStopTimeout: \(automaticStopTimeout)")
+            respondWithSuccess(to: .setAutomaticStopParameters)
+            return CBATTError.Code.success
+        case .getAutomaticStopParameters:
+            var response = Data(IDCommandControlPointOpcode.getAutomaticStopParametersResponse.rawValue)
+            response.append(automaticStopState.rawValue)
+            guard automaticStopState == .enabled else {
+                sendResponse(addE2EProtection(response: response))
+                return CBATTError.Code.success
+            }
+            response.append(automaticStopTimeout)
+            response.append(automaticStopCounter)
+            sendResponse(addE2EProtection(response: response))
+            return CBATTError.Code.success
+        case .resetAutomaticStopTimeout:
+            let lastIntereactionInterval = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            guard lastIntereactionInterval <= automaticStopTimeout else {
+                response(to: .resetAutomaticStopTimeout, with: .parameterOutOfRange)
+                return CBATTError.Code.success
+            }
+            
+            guard lastIntereactionInterval <= automaticStopCounter else {
+                response(to: .resetAutomaticStopTimeout, with: .procedureNotApplicable)
+                return CBATTError.Code.success
+            }
+            
+            automaticStopCounter = lastIntereactionInterval
+            respondWithSuccess(to: .resetAutomaticStopTimeout)
+            return CBATTError.Code.success
+        case .setAcousticSignalSuspensionParameters:
+            let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
+            print("status: \(String(describing: status))")
+            index += 1
+            guard status == .enabled else {
+                respondWithSuccess(to: .setAcousticSignalSuspensionParameters)
+                acousticSignalSuspensionState = .disabled
+                return CBATTError.Code.success
+            }
+            acousticSignalSuspensionState = .enabled
+            let startTime = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            index += 2
+            acousticSignalSuspensionStartTime = TimeInterval(startTime*60)
+            print("acousticSignalSuspensionStartTime: \(acousticSignalSuspensionStartTime)")
+            let duration = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            index += 2
+            acousticSignalSuspensionDuration = TimeInterval(duration*60)
+            print("acousticSignalSuspensionDuration: \(acousticSignalSuspensionDuration)")
+            let repeatStatus = IDRepeatFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDRepeatFlag.RawValue.self))
+            acousticSignalSuspensionRepeatStatus = repeatStatus!
+            print("acousticSignalSuspensionRepeatStatus: \(acousticSignalSuspensionRepeatStatus)")
+            respondWithSuccess(to: .setAcousticSignalSuspensionParameters)
+            return CBATTError.Code.success
+        case .getAcousticSignalSuspensionParameters:
+            var response = Data(IDCommandControlPointOpcode.getAcousticSignalSuspensionParametersResponse.rawValue)
+            response.append(acousticSignalSuspensionState.rawValue)
+            guard acousticSignalSuspensionState == .enabled else {
+                sendResponse(addE2EProtection(response: response))
+                return CBATTError.Code.success
+            }
+            response.append(UInt16(acousticSignalSuspensionStartTime/60.0))
+            response.append(UInt16(acousticSignalSuspensionDuration/60.0))
+            response.append(acousticSignalSuspensionRepeatStatus.rawValue)
+            sendResponse(addE2EProtection(response: response))
+            return CBATTError.Code.success
+        case .setLifetimeWarningLimit:
+            let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
+            print("status: \(String(describing: status))")
+            index += 1
+            guard status == .enabled else {
+                respondWithSuccess(to: .setLifetimeWarningLimit)
+                lifetimeWarningState = .disabled
+                return CBATTError.Code.success
+            }
+            lifetimeWarningState = .enabled
+            let limit = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            lifeTimeWarningLimitInDays = limit
+            print("lifeTimeWarningLimitInDays: \(lifeTimeWarningLimitInDays)")
+            respondWithSuccess(to: .setLifetimeWarningLimit)
+            return CBATTError.Code.success
+        case .getLifetimeWarningLimit:
+            var response = Data(IDCommandControlPointOpcode.getLifetimeWarningLimitResponse.rawValue)
+            response.append(lifetimeWarningState.rawValue)
+            guard lifetimeWarningState == .enabled else {
+                sendResponse(addE2EProtection(response: response))
+                return CBATTError.Code.success
+            }
+            response.append(lifeTimeWarningLimitInDays)
+            sendResponse(addE2EProtection(response: response))
+            return CBATTError.Code.success
+        case .setReservoirLevelWarningLimit:
+            let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
+            print("status: \(String(describing: status))")
+            index += 1
+            guard status == .enabled else {
+                reservoirWarningState = .disabled
+                respondWithSuccess(to: .setReservoirLevelWarningLimit)
+                return CBATTError.Code.success
+            }
+            reservoirWarningState = .enabled
+            let limit = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
+            reservoirWarningLimit = limit
+            print("reservoirWarningLimit: \(reservoirWarningLimit)")
+            respondWithSuccess(to: .setReservoirLevelWarningLimit)
+            return CBATTError.Code.success
+        case .getReservoirLevelWarningLimit:
+            var response = Data(IDCommandControlPointOpcode.getReservoirLevelWarningLimitResponse.rawValue)
+            response.append(reservoirWarningState.rawValue)
+            guard reservoirWarningState == .enabled else {
+                sendResponse(addE2EProtection(response: response))
+                return CBATTError.Code.success
+            }
+            response.append(reservoirWarningLimit.sfloat)
+            sendResponse(addE2EProtection(response: response))
+            return CBATTError.Code.success
+        case .setInsulinDeliveryStartSoundParameters:
+            let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
+            print("status: \(String(describing: status))")
+            insulinDeliveryStartSoundState = status ?? .disabled
+            respondWithSuccess(to: .setInsulinDeliveryStartSoundParameters)
+            return CBATTError.Code.success
+        case .getInsulinDeliveryStartSoundParameters:
+            var response = Data(IDCommandControlPointOpcode.getInsulinDeliveryStartSoundParametersResponse.rawValue)
+            response.append(insulinDeliveryStartSoundState.rawValue)
             sendResponse(addE2EProtection(response: response))
             return CBATTError.Code.success
         default:
@@ -94,6 +263,45 @@ class IDCommandControlPointDataHandlerEnhancement: IDCommandControlPointDataHand
             let stepValue = Data(response[response.startIndex.advanced(by: 3)...].to(SFLOAT.self)).sfloatToDouble()
             let maxBolusAmount = Data(response[response.startIndex.advanced(by: 5)...].to(SFLOAT.self)).sfloatToDouble()
             return (.success(["state": status!, "step value": stepValue, "max bolus amount": maxBolusAmount]), completion)
+        case .getAutomaticStopParametersResponse:
+            let completion = completeProcedure(IDCommandControlPointOpcode.getAutomaticStopParameters)
+            let status = IDStateFlag(rawValue: response[response.startIndex.advanced(by: 2)...].to(IDStateFlag.RawValue.self))
+            guard status == .enabled else {
+                return (.success(status), completion)
+            }
+            let timeout = response[response.startIndex.advanced(by: 3)...].to(UInt16.self)
+            let counter = response[response.startIndex.advanced(by: 5)...].to(UInt16.self)
+            return (.success(["state": status!, "timeout": timeout, "counter": counter]), completion)
+        case .getAcousticSignalSuspensionParametersResponse:
+            let completion = completeProcedure(IDCommandControlPointOpcode.getAcousticSignalSuspensionParameters)
+            let status = IDStateFlag(rawValue: response[response.startIndex.advanced(by: 2)...].to(IDStateFlag.RawValue.self))
+            guard status == .enabled else {
+                return (.success(status), completion)
+            }
+            let startTime = response[response.startIndex.advanced(by: 3)...].to(UInt16.self)
+            let duration = response[response.startIndex.advanced(by: 5)...].to(UInt16.self)
+            let repeatStatus = IDRepeatFlag(rawValue: response[response.startIndex.advanced(by: 7)...].to(IDRepeatFlag.RawValue.self))
+            return (.success(["state": status!, "startTime": startTime, "duration": duration, "repeatStatus": repeatStatus ?? "not set"]), completion)
+        case .getLifetimeWarningLimitResponse:
+            let completion = completeProcedure(IDCommandControlPointOpcode.getLifetimeWarningLimit)
+            let status = IDStateFlag(rawValue: response[response.startIndex.advanced(by: 2)...].to(IDStateFlag.RawValue.self))
+            guard status == .enabled else {
+                return (.success(status), completion)
+            }
+            let limit = response[response.startIndex.advanced(by: 3)...].to(UInt16.self)
+            return (.success(["state": status!, "limit": limit]), completion)
+        case .getReservoirLevelWarningLimitResponse:
+            let completion = completeProcedure(IDCommandControlPointOpcode.getReservoirLevelWarningLimit)
+            let status = IDStateFlag(rawValue: response[response.startIndex.advanced(by: 2)...].to(IDStateFlag.RawValue.self))
+            guard status == .enabled else {
+                return (.success(status), completion)
+            }
+            let limit = Data(response[response.startIndex.advanced(by: 3)...].to(SFLOAT.self)).sfloatToDouble()
+            return (.success(["state": status!, "limit": limit]), completion)
+        case .getInsulinDeliveryStartSoundParametersResponse:
+            let completion = completeProcedure(IDCommandControlPointOpcode.getInsulinDeliveryStartSoundParameters)
+            let status = IDStateFlag(rawValue: response[response.startIndex.advanced(by: 2)...].to(IDStateFlag.RawValue.self))
+            return (.success(["state": status!]), completion)
         default:
             return super.handleResponse(response)
         }
