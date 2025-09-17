@@ -24,6 +24,8 @@ class MockInsulinDeliveryPumpEnhancement: MockInsulinDeliveryPump {
             return IDStatusReaderControlPointEnhancement(messageQueue: messageQueue) as! T
         } else if type == IDCommandControlPointCharacteristic.self {
             return IDCommandControlPointEnhancement(messageQueue: messageQueue) as! T
+        } else if type == IDRecordAccessControlPointCharacteristic.self {
+            return IDRecordAccessControlPointCharacteristicEnhancement(messageQueue: messageQueue) as! T
         } else {
             return T(messageQueue: messageQueue)
         }

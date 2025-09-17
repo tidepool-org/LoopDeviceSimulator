@@ -896,7 +896,7 @@ extension InsulinDeliveryClientViewModel {
     func requestStoredRecords() {
         SessionLog.shared.stimulus("RACP Report Stored Records: \(racpOperator), records \(minRecordNumberString)…\(maxRecordNumberString)")
         racpMessage = nil
-        insulinDeliveryController?.requestStoredRecords(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
+        insulinDeliveryController?.requestCombinedReport(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message
         }
     }
