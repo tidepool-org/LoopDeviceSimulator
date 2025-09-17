@@ -406,6 +406,12 @@ struct InsulinDeliveryClientView: View {
             maxBolusAmountControls
             maxBasalRateControls
             localBolusControls
+            autoStopControls
+            resetAutoStopTimeoutControls
+            suspendSignalControls
+            lifetimelWarningLimitControls
+            reservoirLevelWarningLimitControls
+            insulinDeliveryStartSoundControls
         }
     }
     
@@ -620,11 +626,11 @@ struct InsulinDeliveryClientView: View {
                 Spacer()
                 NumberEntryEntryView(title: "Enter Amount", number: $viewModel.maxBolusAmountString)
             }
-            Button(action: viewModel.setMaxBolusAmount) {
-                Text("Set Max Bolus Amount")
-            }
             Button(action: viewModel.getMaxBolusAmount) {
                 Text("Get Max Bolus Amount")
+            }
+            Button(action: viewModel.setMaxBolusAmount) {
+                Text("Set Max Bolus Amount")
             }
             if let message = viewModel.maxBolusAmountMessage {
                 MessageView(message: message)
@@ -679,127 +685,132 @@ struct InsulinDeliveryClientView: View {
         }
     }
 
-//    private var autoStopControls: some View {
-//        VStack {
-//            Toggle("Automatic Stop Status", isOn: $viewModel.autoStopStatus)
-//            HStack {
-//                Text("Max Automatic Stop Timeout")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.maxAutoStopTimeoutString)
-//            }
-//            Button(action: viewModel.getAutoStopParameters) {
-//                Text("Get Automatic Stop Parameters")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.setAutoStopParameters) {
-//                Text("Set Automatic Stop Parameters")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.autoStopMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
-//    private var resetAutoStopTimeoutControls: some View {
-//        VStack {
-//            HStack {
-//                Text("Last User Interaction")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.lastUserInteractionString)
-//            }
-//            Button(action: viewModel.resetAutoStopTimeout) {
-//                Text("Reset Automatic Stop Timeout")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.resetAutoStopMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
-//    private var suspendSignalControls: some View {
-//        VStack {
-//            Toggle("Suspend Signal Status", isOn: $viewModel.suspendSignalStatus)
-//            Toggle("Suspend Signal Repeats", isOn: $viewModel.suspendSignalRepeats)
-//            HStack {
-//                Text("Suspend Signal Start Time")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.suspendSignalStartTimeString)
-//            }
-//            HStack {
-//                Text("Suspend Signal Duration")
-//                NumberEntryEntryView(title: "Enter value", number: $viewModel.suspendSignalDurationString)
-//            }
-//            Button(action: viewModel.setSuspendSignalParameters) {
-//                Text("Set Suspend Signal Parameters")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.getSuspendSignalParameters) {
-//                Text("Get Suspend Signal Parameters")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.suspendSignalMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
-//    private var lifetimelWarningLimitControls: some View {
-//        VStack {
-//            Toggle("Lifetime Warning Limit Status", isOn: $viewModel.lifetimeWarningLimitStatus)
-//            HStack {
-//                Text("Lifetime Warning Limit (days)")
-//                NumberEntryEntryView(title: "Enter Limit", number: $viewModel.lifetimeWarningLimitString)
-//            }
-//            Button(action: viewModel.setLifetimeWarningLimit) {
-//                Text("Set Lifetime Level Warning Limit")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.getLifetimeWarningLimit) {
-//                Text("Get Lifetime Warning Limit")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.lifetimeWarningLimitMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
-//    private var reservoirLevelWarningLimitControls: some View {
-//        VStack {
-//            Toggle("Reservoir Level Warning Limit Status", isOn: $viewModel.reservoirLevelWarningLimitStatus)
-//            HStack {
-//                Text("Reservoir Level Warning Limit (IU)")
-//                NumberEntryEntryView(title: "Enter Limit", number: $viewModel.reservoirLevelWarningLimitString)
-//            }
-//            Button(action: viewModel.setReservoirLevelWarningLimit) {
-//                Text("Set Reservoir Level Warning Limit")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.getReservoirLevelWarningLimit) {
-//                Text("Get Reservoir Level Warning Limit")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.reservoirLevelWarningLimitMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
-//
-//    private var insulinDeliveryStartSoundControls: some View {
-//        VStack {
-//            Toggle("Insulin Delivery Start Sound Status", isOn: $viewModel.insulinDeliveryStartSoundStatus)
-//            Button(action: viewModel.setInsulinDeliveryStartSoundParameters) {
-//                Text("Set Insulin Delivery Start Sound Parameters")
-//            }
-//            .padding(.vertical)
-//            Button(action: viewModel.getInsulinDeliveryStartSoundParameters) {
-//                Text("Get Insulin Delivery Start Sound Parameters")
-//            }
-//            .padding(.vertical)
-//            if let message = viewModel.insulinDeliveryStartSoundParametersMessage {
-//                MessageView(message: message)
-//            }
-//        }
-//    }
+    private var autoStopControls: some View {
+        VStack {
+            Divider()
+            Toggle("Automatic Stop Status", isOn: $viewModel.autoStopStatus)
+            HStack {
+                Text("Max Automatic Stop Timeout")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.maxAutoStopTimeoutString)
+            }
+            Button(action: viewModel.getAutoStopParameters) {
+                Text("Get Automatic Stop Parameters")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setAutoStopParameters) {
+                Text("Set Automatic Stop Parameters")
+            }
+            .padding(.vertical)
+            if let message = viewModel.autoStopMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    private var resetAutoStopTimeoutControls: some View {
+        VStack {
+            HStack {
+                Text("Last User Interaction")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.lastUserInteractionString)
+            }
+            Button(action: viewModel.resetAutoStopTimeout) {
+                Text("Reset Automatic Stop Timeout")
+            }
+            .padding(.vertical)
+            if let message = viewModel.resetAutoStopMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    private var suspendSignalControls: some View {
+        VStack {
+            Divider()
+            Toggle("Suspend Signal Status", isOn: $viewModel.suspendSignalStatus)
+            Toggle("Suspend Signal Repeats", isOn: $viewModel.suspendSignalRepeats)
+            HStack {
+                Text("Suspend Signal Start Time")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.suspendSignalStartTimeString)
+            }
+            HStack {
+                Text("Suspend Signal Duration")
+                NumberEntryEntryView(title: "Enter value", number: $viewModel.suspendSignalDurationString)
+            }
+            Button(action: viewModel.getSuspendSignalParameters) {
+                Text("Get Suspend Signal Parameters")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setSuspendSignalParameters) {
+                Text("Set Suspend Signal Parameters")
+            }
+            .padding(.vertical)
+            if let message = viewModel.suspendSignalMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    private var lifetimelWarningLimitControls: some View {
+        VStack {
+            Divider()
+            Toggle("Lifetime Warning Limit Status", isOn: $viewModel.lifetimeWarningLimitStatus)
+            HStack {
+                Text("Lifetime Warning Limit (days)")
+                NumberEntryEntryView(title: "Enter Limit", number: $viewModel.lifetimeWarningLimitString)
+            }
+            Button(action: viewModel.getLifetimeWarningLimit) {
+                Text("Get Lifetime Warning Limit")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setLifetimeWarningLimit) {
+                Text("Set Lifetime Level Warning Limit")
+            }
+            .padding(.vertical)
+            if let message = viewModel.lifetimeWarningLimitMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    private var reservoirLevelWarningLimitControls: some View {
+        VStack {
+            Divider()
+            Toggle("Reservoir Level Warning Limit Status", isOn: $viewModel.reservoirLevelWarningLimitStatus)
+            HStack {
+                Text("Reservoir Level Warning Limit (IU)")
+                NumberEntryEntryView(title: "Enter Limit", number: $viewModel.reservoirLevelWarningLimitString)
+            }
+            Button(action: viewModel.getReservoirLevelWarningLimit) {
+                Text("Get Reservoir Level Warning Limit")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setReservoirLevelWarningLimit) {
+                Text("Set Reservoir Level Warning Limit")
+            }
+            .padding(.vertical)
+            if let message = viewModel.reservoirLevelWarningLimitMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    private var insulinDeliveryStartSoundControls: some View {
+        VStack {
+            Divider()
+            Toggle("Insulin Delivery Start Sound Status", isOn: $viewModel.insulinDeliveryStartSoundStatus)
+            Button(action: viewModel.getInsulinDeliveryStartSoundParameters) {
+                Text("Get Insulin Delivery Start Sound Parameters")
+            }
+            .padding(.vertical)
+            Button(action: viewModel.setInsulinDeliveryStartSoundParameters) {
+                Text("Set Insulin Delivery Start Sound Parameters")
+            }
+            .padding(.vertical)
+            if let message = viewModel.insulinDeliveryStartSoundParametersMessage {
+                MessageView(message: message)
+            }
+        }
+    }
     
     @ViewBuilder
     private var racpControls: some View {
