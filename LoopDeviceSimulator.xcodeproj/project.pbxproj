@@ -828,7 +828,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/tidepool-org/InsulinDeliveryServiceKit.git";
 			requirement = {
-				branch = dev;
+				branch = "nate/idd-history-data-extension";
 				kind = branch;
 			};
 		};

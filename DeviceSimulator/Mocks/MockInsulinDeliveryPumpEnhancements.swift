@@ -42,6 +42,14 @@ class MockInsulinDeliveryPumpEnhancement: MockInsulinDeliveryPump {
             return T(messageQueue: messageQueue)
         }
     }
+    
+    override class func createIndicativeCharacteristic<T: IndicativeCharacertistic>(of type: T.Type, messageQueue: any MessagingQueue) -> T {
+        if type == IDHistoryDataCharacteristic.self {
+            return IDHistoryDataCharacteristicEnhancement(messageQueue: messageQueue) as! T
+        } else {
+            return T(messageQueue: messageQueue)
+        }
+    }
 }
 
 extension MockInsulinDeliveryPumpEnhancement: IDStatusReaderControlPointEnhancementDelegate {
