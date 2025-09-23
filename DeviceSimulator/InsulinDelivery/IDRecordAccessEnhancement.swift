@@ -162,6 +162,11 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
         response.append(numberOfRecords)
         return response
     }
+    
+    override func addReferenceTimeHistoryEvent() {
+        let eventData = ReferenceTimeHistoryEventEnhancement.createEventData(referenceTime, reason: .dateTimeLoss, timeZoneAndDSTOffset: .minutes(60))
+        createHistoryEvent(for: .referenceTime, eventData: eventData)
+    }
 }
 
 class IDRecordAccessControlPointDataHandlerEnhancement: IDRecordAccessControlPointDataHandler {
