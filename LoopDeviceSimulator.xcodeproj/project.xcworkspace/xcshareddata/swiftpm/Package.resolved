@@ -6,8 +6,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:tidepool-org/BluetoothCommonKit.git",
       "state" : {
-        "branch" : "nate/crash-fix",
-        "revision" : "ee168bfaa9358077a574dd65dd1177e5fb9aefae"
+        "branch" : "dev",
+        "revision" : "5233e35173564fd29258ddbac6c1abd809ed0cfa"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
-        "branch" : "nate/crash-fix",
-        "revision" : "a49f81daa45061bd920f57ba471c35286f3ca396"
+        "branch" : "dev",
+        "revision" : "ecc67bf87eb954436504d1be4914cff96add690e"
       }
     }
   ],
