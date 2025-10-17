@@ -254,7 +254,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.historyData.cbUUID:
             print("Data from history data")
-            let result = IDHistoryDataHandler.handleData(characteristicData)
+            let result = IDHistoryDataHandler.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
             message = String(describing: result)
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case DeviceTimeCharacteristicUUID.deviceTime.cbUUID:
