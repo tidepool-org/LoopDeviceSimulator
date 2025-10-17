@@ -7,7 +7,7 @@
       "location" : "git@github.com:tidepool-org/BluetoothCommonKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "a1cedf6c54da0eefd860237646614a63feddf662"
+        "revision" : "5233e35173564fd29258ddbac6c1abd809ed0cfa"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "a1ec507a9931a13c7d19af037e6f3efba2eb3ede"
+        "revision" : "ecc67bf87eb954436504d1be4914cff96add690e"
       }
     }
   ],
