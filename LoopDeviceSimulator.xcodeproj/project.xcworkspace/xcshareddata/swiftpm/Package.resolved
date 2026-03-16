@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
-        "branch" : "nate/idd-history-data-extension",
-        "revision" : "5ebc3a10fba023c83c2e1cfd8dd7c61c7b19ed37"
+        "branch" : "dev",
+        "revision" : "92b43261d012ff11ef4a49bd5a89ca4991e0e0c5"
       }
     }
   ],
