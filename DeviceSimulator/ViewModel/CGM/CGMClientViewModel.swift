@@ -84,7 +84,7 @@ class CGMClientViewModel: ObservableObject {
         guard value.isFinite else {
             return value.isNaN ? "NaN" : (value > 0 ? "+INFINITY" : "-INFINITY")
         }
-        return value == value.rounded() ? String(Int(value)) : String(value)
+        return value.compactDescription
     }
 
     // MARK: - Messages
@@ -133,6 +133,10 @@ class CGMClientViewModel: ObservableObject {
 
     func refreshList() {
         deviceList.removeAll()
+        // The disconnect button tears the controller down; a refresh brings it back so scanning resumes.
+        if collector == nil {
+            startClient()
+        }
         collector?.scanForPeripherals()
     }
 
@@ -276,7 +280,7 @@ class CGMClientViewModel: ObservableObject {
             }
             request = CGMSpecificOpsRequest.getGlucoseCalibrationValue(recordNumber: number, e2eCRC: e2eCRC)
         case .calibrationRecord:
-            guard let glucose = Double(calibrationGlucoseEntry), let time = UInt16(calibrationTimeEntry),
+            guard let glucose = calibrationGlucoseEntry.parsedDouble, let time = UInt16(calibrationTimeEntry),
                   let next = UInt16(nextCalibrationTimeEntry)
             else {
                 cgmcpMessage = "Calibration needs a numeric glucose and 0–65535 minute offsets"
@@ -285,7 +289,7 @@ class CGMClientViewModel: ObservableObject {
             let record = CGMCalibrationRecord(glucoseConcentration: glucose, calibrationTime: time, nextCalibrationTime: next)
             request = CGMSpecificOpsRequest.setGlucoseCalibrationValue(record, e2eCRC: e2eCRC)
         case .glucoseLevel, .rateLevel:
-            guard let level = Double(alertLevelEntry) else {
+            guard let level = alertLevelEntry.parsedDouble else {
                 cgmcpMessage = "Alert level must be numeric"
                 return
             }

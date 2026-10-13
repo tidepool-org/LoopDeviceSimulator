@@ -229,15 +229,15 @@ class CGMServerViewModel {
         guard let sensor else { return }
         switch glucoseSource {
         case .sineWave:
-            guard let start = Double(sineStartEntry), let amplitude = Double(sineAmplitudeEntry),
-                  let minutes = Double(sinePeriodMinutesEntry), minutes > 0
+            guard let start = sineStartEntry.parsedDouble, let amplitude = sineAmplitudeEntry.parsedDouble,
+                  let minutes = sinePeriodMinutesEntry.parsedDouble, minutes > 0
             else {
                 glucoseSourceMessage = "Sine wave needs numeric start, amplitude and a period above 0 minutes"
                 return
             }
             sensor.trace = .sineCurve(base: start, amplitude: amplitude, period: minutes * 60)
         case .constant:
-            guard let mgdl = Double(constantEntry) else {
+            guard let mgdl = constantEntry.parsedDouble else {
                 glucoseSourceMessage = "Constant needs a numeric mg/dL value"
                 return
             }
@@ -280,7 +280,7 @@ class CGMServerViewModel {
     }
 
     private static func format(_ value: Double) -> String {
-        value == value.rounded() ? String(Int(value)) : String(value)
+        value.compactDescription
     }
 
     // MARK: - Feature and status bits
