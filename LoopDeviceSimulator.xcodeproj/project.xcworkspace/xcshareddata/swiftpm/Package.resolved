@@ -1,31 +1,40 @@
 {
-  "originHash" : "5788ddb3b58044ed06aaad0ab41d864e6b28f442bdbdde1319eed04e34530cba",
+  "originHash" : "55f6f4d6dd3952f1eabfcea8b4b84e221d033c13070f25341715d1fe7811239e",
   "pins" : [
     {
       "identity" : "bluetoothcommonkit",
       "kind" : "remoteSourceControl",
-      "location" : "git@github.com:tidepool-org/BluetoothCommonKit.git",
+      "location" : "https://github.com/tidepool-org/BluetoothCommonKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "5233e35173564fd29258ddbac6c1abd809ed0cfa"
+        "revision" : "221cb754af7cce8d06ab439f223e2ee3ff8d1ef1"
+      }
+    },
+    {
+      "identity" : "continuousglucosemonitorservicekit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git",
+      "state" : {
+        "branch" : "dev",
+        "revision" : "d7144f62d5107bcc7fcf995daf40ecffbd22afe0"
       }
     },
     {
       "identity" : "cryptoswift",
       "kind" : "remoteSourceControl",
-      "location" : "git@github.com:krzyzanowskim/CryptoSwift.git",
+      "location" : "https://github.com/krzyzanowskim/CryptoSwift.git",
       "state" : {
-        "revision" : "e45a26384239e028ec87fbcc788f513b67e10d8f",
-        "version" : "1.9.0"
+        "revision" : "f2a627b84c1ff96f21ac2fcb623ab36142dd5512",
+        "version" : "1.10.0"
       }
     },
     {
       "identity" : "insulindeliveryservicekit",
       "kind" : "remoteSourceControl",
-      "location" : "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git",
+      "location" : "https://github.com/tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "ecc67bf87eb954436504d1be4914cff96add690e"
+        "revision" : "45770a3bd3a57637e3cff816c795026297749c4f"
       }
     }
   ],

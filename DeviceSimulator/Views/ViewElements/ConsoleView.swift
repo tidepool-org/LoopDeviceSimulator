@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+/// Read-only log card shared by every client view.
 struct ConsoleView: View {
     let title: String
     let output: String
@@ -15,6 +16,7 @@ struct ConsoleView: View {
     var body: some View {
         RoundedCard(title: title) {
             TextEditor(text: .constant(output))
+                .frame(minHeight: 120)
         }
     }
 }

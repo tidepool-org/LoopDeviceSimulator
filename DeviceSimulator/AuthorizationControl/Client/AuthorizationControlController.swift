@@ -352,7 +352,8 @@ extension AuthorizationControlController {
     }
     
     func keyExchangeKDF(completion: @escaping MessageCompletion) {
-        let request = controlPoint.createKeyExchangeKDFRequest()
+        // Same default the kit's queued variant uses.
+        let request = controlPoint.createKeyExchangeKDFRequest(keyID: securityManager.configuration.ecdhKeyID)
         sendControlPointRequest(request: request, completion: completion)
     }
     
@@ -368,7 +369,7 @@ extension AuthorizationControlController {
     
     func startKeyExchange(completion: @escaping MessageCompletion) {
         securityManager.generateKeyPair()
-        let request = controlPoint.createStartKeyExchangeRequest()
+        let request = controlPoint.createStartKeyExchangeRequest(keyID: securityManager.configuration.ecdhKeyID)
         sendControlPointRequest(request: request, completion: completion)
     }
     
