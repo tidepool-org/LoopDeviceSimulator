@@ -11,4 +11,7 @@ import ContinuousGlucoseMonitorServiceKit
 
 struct CGMConstants {
     static let serverName: String = MockCGMSensor.defaultAdvertisedName
+    /// Out-of-band confirmation number the collector uses for the ACS key exchange; matches the mock
+    /// sensor's default so the two-device test needs no entry.
+    static let oobRandomNumber = "42"
 }

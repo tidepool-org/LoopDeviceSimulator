@@ -43,6 +43,51 @@ class CGMClientViewModel: ObservableObject {
     }
     @Published var configureMessage: String? = nil
 
+    // MARK: - Authorization Control (secure channel)
+
+    @Published var isSecurityEstablished: Bool = false
+    /// Mirrors the collector's routing flag; the tester can drop back to plain characteristics to see the
+    /// sensor refuse them with Insufficient Authorization.
+    @Published var usesSecureChannel: Bool = false {
+        didSet {
+            guard !isSyncingSecurity, oldValue != usesSecureChannel else { return }
+            collector?.usesSecureChannel = usesSecureChannel
+        }
+    }
+    @Published var authorizationMessage: String? = nil
+    /// Sensor key (OOB number) sent during the key exchange; defaults to the mock sensor's. Editable so QA
+    /// can run a mismatched key and see the confirmation fail.
+    @Published var sensorKeyEntry: String = CGMConstants.oobRandomNumber
+    private var isSyncingSecurity = false
+
+    func establishSecureSession() {
+        let key = sensorKeyEntry.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty else {
+            authorizationMessage = "Sensor key cannot be empty"
+            return
+        }
+        collector?.sensorKey = key
+        authorizationMessage = "key exchange in progress with sensor key \(key)…"
+        collector?.establishSecureSession { [weak self] message in
+            self?.authorizationMessage = message
+            self?.syncSecurityState()
+        }
+    }
+
+    func invalidateKey() {
+        collector?.invalidateKey { [weak self] message in
+            self?.authorizationMessage = message
+            self?.syncSecurityState()
+        }
+    }
+
+    private func syncSecurityState() {
+        isSyncingSecurity = true
+        isSecurityEstablished = collector?.isSecurityEstablished ?? false
+        usesSecureChannel = collector?.usesSecureChannel ?? false
+        isSyncingSecurity = false
+    }
+
     // MARK: - Last measurement
 
     @Published var lastMeasurement: CGMMeasurementRecord? = nil
@@ -112,6 +157,9 @@ class CGMClientViewModel: ObservableObject {
             self.lastMeasurementReceivedAt = Date()
             self.measurementCount += records.count
         }
+        collector?.onSecurityStateChange = { [weak self] in
+            self?.syncSecurityState()
+        }
     }
 
     /// Tears the controller down so no callback can restart scanning after the view is gone; `startClient`
@@ -154,6 +202,8 @@ class CGMClientViewModel: ObservableObject {
 
     private func reset() {
         resetSubscriptions()
+        syncSecurityState()
+        authorizationMessage = nil
         lastMeasurement = nil
         lastMeasurementReceivedAt = nil
         measurementCount = 0
