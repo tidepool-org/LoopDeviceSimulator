@@ -67,9 +67,10 @@ class InsulinDeliveryServerViewModel {
     
     @ObservationIgnored private var serverName: String?
     
+    /// `nil` keeps the current name (restart); an empty string falls back to the pump default.
     func startServer(serverName: String? = nil) {
         if let serverName = serverName {
-            self.serverName = serverName
+            self.serverName = serverName.isEmpty ? nil : serverName
         }
         let server = GATTServer(advertisedName: self.serverName ?? InsulinDeliveryConstants.serverName, advertisedServices: [InsulinDeliveryCharacteristicUUID.service.cbUUID, ACCharacteristicUUID.service.cbUUID])
         self.server = server

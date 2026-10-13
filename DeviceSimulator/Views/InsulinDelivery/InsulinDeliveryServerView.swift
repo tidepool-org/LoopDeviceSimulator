@@ -12,9 +12,12 @@ import InsulinDeliveryServiceKit
 struct InsulinDeliveryServerView: View {
     @Bindable var viewModel: InsulinDeliveryServerViewModel
 
+    /// Advertised local name, from the root list's Server Name field.
+    var serverName: String? = nil
+
     var body: some View {
         insulinDeliveryServer
-            .onAppear(perform: { viewModel.startServer() })
+            .onAppear(perform: { viewModel.startServer(serverName: serverName) })
             .onDisappear(perform: { viewModel.stopServer() })
     }
 

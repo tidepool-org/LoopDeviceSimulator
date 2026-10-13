@@ -42,3 +42,31 @@ struct Device: Hashable {
     var rssi: NSNumber
     var serviceData: [CBUUID: Data]?
 }
+
+/// Discovered-peripheral list shared by the test clients: refresh, prompt, one card per device.
+struct DeviceListView: View {
+    let title: String
+    let prompt: String
+    let devices: [Device]
+    let onRefresh: () -> Void
+    let onSelect: (Device) -> Void
+
+    var body: some View {
+        RoundedCardScrollView(title: title) {
+            RoundedCard {
+                Button(action: onRefresh) {
+                    Text("Refresh List")
+                    Spacer()
+                }
+            }
+            Text(prompt)
+            ForEach(devices, id: \.self) { device in
+                RoundedCard {
+                    Button(action: { onSelect(device) }) {
+                        DeviceView(device: device)
+                    }
+                }
+            }
+        }
+    }
+}

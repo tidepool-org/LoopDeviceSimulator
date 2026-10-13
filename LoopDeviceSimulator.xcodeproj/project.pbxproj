@@ -7,7 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B4614996307E2F16000825DB /* ContinuousGlucoseMonitorServiceKit in Frameworks */ = {isa = PBXBuildFile; productRef = B4614995307E2F16000825DB /* ContinuousGlucoseMonitorServiceKit */; };
 		B4A5A2612E466CF100B9D83F /* InsulinDeliveryServiceKit in Frameworks */ = {isa = PBXBuildFile; productRef = B4A5A2602E466CF100B9D83F /* InsulinDeliveryServiceKit */; };
+		B4C6A0032E9A000100C6A001 /* ContinuousGlucoseMonitorServiceKit in Frameworks */ = {isa = PBXBuildFile; productRef = B4C6A0022E9A000100C6A001 /* ContinuousGlucoseMonitorServiceKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -70,6 +72,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B4A5A2612E466CF100B9D83F /* InsulinDeliveryServiceKit in Frameworks */,
+				B4614996307E2F16000825DB /* ContinuousGlucoseMonitorServiceKit in Frameworks */,
+				B4C6A0032E9A000100C6A001 /* ContinuousGlucoseMonitorServiceKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -131,6 +135,8 @@
 			name = DeviceSimulator;
 			packageProductDependencies = (
 				B4A5A2602E466CF100B9D83F /* InsulinDeliveryServiceKit */,
+				B4C6A0022E9A000100C6A001 /* ContinuousGlucoseMonitorServiceKit */,
+				B4614995307E2F16000825DB /* ContinuousGlucoseMonitorServiceKit */,
 			);
 			productName = "Device Simulator";
 			productReference = B4A5A2342E466AE900B9D83F /* DeviceSimulator.app */;
@@ -217,6 +223,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				B4A5A25F2E466CF100B9D83F /* XCRemoteSwiftPackageReference "InsulinDeliveryServiceKit" */,
+				B4614994307E2F16000825DB /* XCRemoteSwiftPackageReference "ContinuousGlucoseMonitorServiceKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B4A5A2352E466AE900B9D83F /* Products */;
@@ -548,7 +555,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Device Simulator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Device Simulator";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DeviceSimulator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DeviceSimulator";
 			};
 			name = Debug;
 		};
@@ -615,7 +622,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Device Simulator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Device Simulator";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/DeviceSimulator.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DeviceSimulator";
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -693,7 +700,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "Device Simulator";
+				TEST_TARGET_NAME = DeviceSimulator;
 			};
 			name = Debug;
 		};
@@ -762,7 +769,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_TARGET_NAME = "Device Simulator";
+				TEST_TARGET_NAME = DeviceSimulator;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -809,9 +816,17 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		B4614994307E2F16000825DB /* XCRemoteSwiftPackageReference "ContinuousGlucoseMonitorServiceKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git";
+			requirement = {
+				branch = dev;
+				kind = branch;
+			};
+		};
 		B4A5A25F2E466CF100B9D83F /* XCRemoteSwiftPackageReference "InsulinDeliveryServiceKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "git@github.com:tidepool-org/InsulinDeliveryServiceKit.git";
+			repositoryURL = "https://github.com/tidepool-org/InsulinDeliveryServiceKit.git";
 			requirement = {
 				branch = dev;
 				kind = branch;
@@ -820,10 +835,19 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		B4614995307E2F16000825DB /* ContinuousGlucoseMonitorServiceKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B4614994307E2F16000825DB /* XCRemoteSwiftPackageReference "ContinuousGlucoseMonitorServiceKit" */;
+			productName = ContinuousGlucoseMonitorServiceKit;
+		};
 		B4A5A2602E466CF100B9D83F /* InsulinDeliveryServiceKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B4A5A25F2E466CF100B9D83F /* XCRemoteSwiftPackageReference "InsulinDeliveryServiceKit" */;
 			productName = InsulinDeliveryServiceKit;
+		};
+		B4C6A0022E9A000100C6A001 /* ContinuousGlucoseMonitorServiceKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ContinuousGlucoseMonitorServiceKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

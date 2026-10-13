@@ -54,9 +54,7 @@ struct InsulinDeliveryClientView: View {
                             racpCommands
                         }
                         
-                        RoundedCard(title: "Console") {
-                            TextEditor(text: .constant(viewModel.consoleMessages))
-                        }
+                        ConsoleView(title: "Console", output: viewModel.consoleMessages)
                     }
                 }
             } else {
@@ -870,24 +868,14 @@ struct InsulinDeliveryClientView: View {
         }
     }
 
-    @ViewBuilder
     private var deviceList: some View {
-        RoundedCardScrollView(title: "Discovered Peripherals") {
-            RoundedCard() {
-                Button(action: viewModel.refreshList) {
-                    Text("Refresh List")
-                    Spacer()
-                }
-            }
-            Text("Select Insulin Delivery Service to connect")
-            ForEach(viewModel.deviceList, id:\.self) { device in
-                RoundedCard() {
-                    Button(action: { viewModel.connectToDevice(device) }) {
-                        DeviceView(device: device)
-                    }
-                }
-            }
-        }
+        DeviceListView(
+            title: "Discovered Peripherals",
+            prompt: "Select Insulin Delivery Service to connect",
+            devices: viewModel.deviceList,
+            onRefresh: viewModel.refreshList,
+            onSelect: viewModel.connectToDevice
+        )
     }
 }
 
