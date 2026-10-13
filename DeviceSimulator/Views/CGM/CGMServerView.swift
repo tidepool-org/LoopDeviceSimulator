@@ -30,6 +30,7 @@ struct CGMServerView: View {
             RoundedCardScrollView(title: "CGM Sensor Server") {
                 Text("Number of Subscribed Devices: \(viewModel.numberOfSubscribedDevices)")
                 measurementCard
+                recordsCard
                 glucoseSourceCard
                 sessionCard
                 serverCard
@@ -49,12 +50,7 @@ struct CGMServerView: View {
                 RoundedCardValueRow(label: "Next Measurement", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
             }
             Divider()
-            Picker("Measurement Interval", selection: $viewModel.measurementInterval) {
-                ForEach(MeasurementIntervalOption.allCases, id: \.self) { option in
-                    Text(option.description).tag(option)
-                }
-            }
-            .pickerStyle(.segmented)
+            labeledPicker("Measurement Interval", selection: $viewModel.measurementInterval)
             Divider()
             Button(action: viewModel.takeMeasurement) {
                 Text("Measure Now")
@@ -66,6 +62,28 @@ struct CGMServerView: View {
         guard let date else { return "session \(viewModel.sessionStateString)" }
         let remaining = max(0, Int(date.timeIntervalSince(now).rounded(.up)))
         return remaining >= 60 ? "in \(remaining / 60) min \(remaining % 60) s" : "in \(remaining) s"
+    }
+
+    /// The measurement database behind RACP: every reading of the session, kept while the collector is away.
+    private var recordsCard: some View {
+        RoundedCard(title: "Stored Records", footer: "Every measurement is stored for RACP reports until the capacity is reached (oldest dropped first); a new session clears the database per CGMS §3.4.5. Backfill pretends the sensor ran unattended for the chosen span: one record per measurement interval from the selected glucose source is stored silently and the session start moves back by that span, so a collector can fetch them through RACP. Records per Notification packs several records into one notification during a report.") {
+            RoundedCardValueRow(label: "Stored Records", value: "\(viewModel.storedRecordCount) of \(viewModel.recordCapacityEntry)")
+            numberRow("Capacity", text: $viewModel.recordCapacityEntry)
+            HStack {
+                Button("Apply", action: viewModel.applyRecordSettings)
+                Spacer()
+                Button("Clear Records", action: viewModel.clearRecords)
+            }
+            .padding(.vertical, 4)
+            labeledPicker("Records per Notification", selection: $viewModel.recordsPerNotification)
+            Divider()
+            labeledPicker("Backfill Span", selection: $viewModel.backfillDuration)
+            Button("Backfill from Glucose Source", action: viewModel.backfill)
+                .padding(.vertical, 4)
+            if let message = viewModel.recordSettingsMessage {
+                MessageView(message: message)
+            }
+        }
     }
 
     private var glucoseSourceCard: some View {
@@ -91,6 +109,20 @@ struct CGMServerView: View {
                 MessageView(message: message)
             }
         }
+    }
+
+    /// Segmented pickers hide their title, so the label sits above the control.
+    private func labeledPicker<Option: Hashable & CaseIterable & CustomStringConvertible>(_ label: String, selection: Binding<Option>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+            Picker(label, selection: selection) {
+                ForEach(Array(Option.allCases), id: \.self) { option in
+                    Text(option.description).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(.vertical, 4)
     }
 
     private func numberRow(_ label: String, text: Binding<String>) -> some View {

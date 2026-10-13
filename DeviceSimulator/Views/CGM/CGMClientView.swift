@@ -106,6 +106,8 @@ struct CGMClientView: View {
                 RoundedCardValueRow(label: "Sensor Status", value: viewModel.lastSensorStatusString)
                 RoundedCardValueRow(label: "Received", value: viewModel.lastReceivedString)
                 RoundedCardValueRow(label: "Records Received", value: "\(viewModel.measurementCount)")
+                RoundedCardValueRow(label: "Unique Records", value: "\(viewModel.uniqueRecordCount)")
+                RoundedCardValueRow(label: "Duplicates Skipped", value: "\(viewModel.duplicateCount)")
                 if let message = viewModel.measurementMessage {
                     Divider()
                     MessageView(message: message)
@@ -184,7 +186,11 @@ struct CGMClientView: View {
 
     /// RACP op codes and operators (CGMS Tables 3.3–3.5); only the Time Offset filter is legal in CGMS.
     private var racpCard: some View {
-        RoundedCard(title: "Record Access Control Point", footer: "Enable the RACP indication first. The sensor answers Op Code Not Supported until the record database phase lands.") {
+        RoundedCard(title: "Record Access Control Point", footer: "Enable the RACP indication and the CGM Measurement notification first. Reported records arrive as measurement notifications before the Response Code; Backfill asks for everything after the last measurement seen. A record already received on this connection, live or in an earlier report, is counted as a duplicate and skipped.") {
+            Button("Backfill Since Last Measurement", action: viewModel.backfillSinceLastMeasurement)
+                .padding(.vertical, 4)
+            RoundedCardValueRow(label: "Last Report", value: viewModel.reportedRecordsSummary)
+            Divider()
             Picker("Op Code", selection: $viewModel.racpOpcode) {
                 ForEach(CGMRACPOpcode.requests, id: \.self) { opcode in
                     Text(opcode.name).tag(opcode)

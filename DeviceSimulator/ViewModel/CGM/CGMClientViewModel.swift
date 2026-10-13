@@ -99,6 +99,26 @@ class CGMClientViewModel: ObservableObject {
     @Published var lastMeasurementReceivedAt: Date? = nil
     /// Records received since connecting; one notification may carry several.
     @Published var measurementCount: Int = 0
+    /// Distinct records since connecting, and repeats dropped. Keyed on the whole encoded record rather
+    /// than Time Offset, because sub-minute intervals put several real readings on one offset.
+    @Published private(set) var uniqueRecordCount: Int = 0
+    @Published private(set) var duplicateCount: Int = 0
+    private var seenRecords: Set<Data> = []
+
+    /// Stores the new records, drops repeats, and returns the new ones in arrival order.
+    private func acceptRecords(_ records: [CGMMeasurementRecord]) -> [CGMMeasurementRecord] {
+        var fresh: [CGMMeasurementRecord] = []
+        for record in records {
+            if seenRecords.insert(record.encoded(e2eCRC: false)).inserted {
+                fresh.append(record)
+            } else {
+                duplicateCount += 1
+            }
+        }
+        measurementCount += records.count
+        uniqueRecordCount = seenRecords.count
+        return fresh
+    }
 
     var lastGlucoseString: String {
         guard let record = lastMeasurement else { return "—" }
@@ -157,10 +177,17 @@ class CGMClientViewModel: ObservableObject {
         collector = CGMCollectorController()
         collector?.delegate = self
         collector?.onMeasurement = { [weak self] records in
-            guard let self, let latest = records.last else { return }
+            guard let self else { return }
+            let fresh = self.acceptRecords(records)
+            if self.isReportInProgress {
+                self.reportedRecords.append(contentsOf: fresh)
+                self.reportedDuplicateCount += records.count - fresh.count
+            }
+            // A report can replay history, so only a record at or past the newest offset becomes "last".
+            guard let latest = fresh.max(by: { $0.timeOffset < $1.timeOffset }) else { return }
+            if let last = self.lastMeasurement, latest.timeOffset < last.timeOffset { return }
             self.lastMeasurement = latest
             self.lastMeasurementReceivedAt = Date()
-            self.measurementCount += records.count
         }
         collector?.onSecurityStateChange = { [weak self] in
             self?.syncSecurityState()
@@ -212,6 +239,9 @@ class CGMClientViewModel: ObservableObject {
         lastMeasurement = nil
         lastMeasurementReceivedAt = nil
         measurementCount = 0
+        uniqueRecordCount = 0
+        duplicateCount = 0
+        seenRecords.removeAll()
         featureMessage = nil
         statusMessage = nil
         readSessionStartTimeMessage = nil
@@ -222,6 +252,9 @@ class CGMClientViewModel: ObservableObject {
         measurementMessage = nil
         cgmcpMessage = nil
         racpMessage = nil
+        reportedRecords.removeAll()
+        reportedDuplicateCount = 0
+        isReportInProgress = false
     }
 
     /// A new link has no CCCD subscriptions, so the toggles must show OFF without writing anything.
@@ -370,8 +403,32 @@ class CGMClientViewModel: ObservableObject {
     var racpNeedsMinimum: Bool { racpOperator == .greaterThanOrEqualTo || racpOperator == .withinRangeOf }
     var racpNeedsMaximum: Bool { racpOperator == .lessThanOrEqualTo || racpOperator == .withinRangeOf }
 
+    /// Records delivered by the most recent Report Stored Records, so a backfill is visible at a glance.
+    @Published var reportedRecords: [CGMMeasurementRecord] = []
+    @Published var reportedDuplicateCount = 0
+    @Published var isReportInProgress = false
+
+    var reportedRecordsSummary: String {
+        let receiving = isReportInProgress ? " (receiving…)" : ""
+        let duplicates = reportedDuplicateCount > 0 ? ", \(reportedDuplicateCount) duplicates skipped" : ""
+        guard let first = reportedRecords.first, let last = reportedRecords.last else {
+            return reportedDuplicateCount > 0 ? "0 new records\(duplicates)\(receiving)" : (isReportInProgress ? "receiving…" : "none")
+        }
+        return "\(reportedRecords.count) new records, offsets \(first.timeOffset)–\(last.timeOffset) min\(duplicates)\(receiving)"
+    }
+
+    /// HYD-G-015: ask for everything after the last measurement seen, or all records if none was seen.
+    func backfillSinceLastMeasurement() {
+        let request: CGMRACPRequest
+        if let last = lastMeasurement, last.timeOffset < UInt16.max {
+            request = CGMRACPRequest(opcode: .reportStoredRecords, racpOperator: .greaterThanOrEqualTo, minimum: last.timeOffset + 1)
+        } else {
+            request = CGMRACPRequest(opcode: .reportStoredRecords, racpOperator: .allRecords)
+        }
+        send(request)
+    }
+
     func sendRACPRequest() {
-        guard let collector else { return }
         let request: CGMRACPRequest
         if racpOpcode == .abortOperation {
             request = .abort
@@ -399,9 +456,24 @@ class CGMClientViewModel: ObservableObject {
             }
             request = CGMRACPRequest(opcode: racpOpcode, racpOperator: racpOperator, minimum: minimum, maximum: maximum)
         }
+        send(request)
+    }
+
+    private func send(_ request: CGMRACPRequest) {
+        guard let collector else { return }
         racpMessage = nil
-        collector.sendRACPRequest(request) { message in
+        if request.opcode == .reportStoredRecords {
+            reportedRecords.removeAll()
+            reportedDuplicateCount = 0
+            isReportInProgress = true
+        }
+        collector.sendRACPRequest(request) { [weak self] message in
+            guard let self else { return }
             self.racpMessage = (self.racpMessage ?? "") + "\n" + message
+            // The Response Code indication closes the report; records arrived before it.
+            if message.contains("RACP") || message.contains("error") || message.contains("disconnected") {
+                self.isReportInProgress = false
+            }
         }
     }
 }
