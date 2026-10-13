@@ -7,7 +7,7 @@
       "location" : "https://github.com/tidepool-org/BluetoothCommonKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "221cb754af7cce8d06ab439f223e2ee3ff8d1ef1"
+        "revision" : "f16f572c68a77f1ea225a5489c417517a00c00be"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git",
       "state" : {
-        "branch" : "dev",
-        "revision" : "d7144f62d5107bcc7fcf995daf40ecffbd22afe0"
+        "branch" : "nate/HYDRA/cgm-acs",
+        "revision" : "0b5078976bc2a60cab10f1086f57e7d81676e0d4"
       }
     },
     {
@@ -34,7 +34,7 @@
       "location" : "https://github.com/tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "45770a3bd3a57637e3cff816c795026297749c4f"
+        "revision" : "415b0041a9caaf3f2bc68ba905b67648a7237b0a"
       }
     }
   ],
