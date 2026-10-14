@@ -66,6 +66,11 @@ class CGMClientViewModel: ObservableObject {
             authorizationMessage = "Sensor key cannot be empty"
             return
         }
+        // Bytes, not characters: the key goes over the air as UTF-8.
+        guard key.utf8.count <= CGMConstants.maxSensorKeyBytes else {
+            authorizationMessage = "Sensor key must be at most \(CGMConstants.maxSensorKeyBytes) bytes; \(key.utf8.count) entered"
+            return
+        }
         collector?.sensorKey = key
         authorizationMessage = "key exchange in progress with sensor key \(key)…"
         collector?.establishSecureSession { [weak self] message in
