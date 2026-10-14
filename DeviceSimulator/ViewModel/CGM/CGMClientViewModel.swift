@@ -206,8 +206,10 @@ class CGMClientViewModel: ObservableObject {
             if let option = CommunicationIntervalOption(rawValue: minutes) {
                 communicationInterval = option
             }
-        case .level(_, let value):
-            alertLevelEntry = value.isFinite ? value.compactDescription : alertLevelEntry
+        case let .level(opcode, value):
+            // Only the level the tester is working on; a Get for another family must not clobber the entry.
+            guard let family = opcode.alertLevelKeyPath, family == selectedSpecificOp.alertLevelKeyPath, value.isFinite else { return }
+            alertLevelEntry = value.compactDescription
         case let .responseCode(request, code):
             // A new session has a new start time; refresh it so calibrations are stamped against the right one.
             if request == CGMSpecificOpsOpcode.startSession.rawValue, code == CGMSpecificOpsResponseCode.success.rawValue {
