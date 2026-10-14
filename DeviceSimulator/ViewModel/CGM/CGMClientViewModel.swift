@@ -462,7 +462,10 @@ class CGMClientViewModel: ObservableObject {
     private func send(_ request: CGMRACPRequest) {
         guard let collector else { return }
         racpMessage = nil
-        if request.opcode == .reportStoredRecords {
+        // Clear only when opening a fresh report. A report requested mid-transfer is refused by the sensor
+        // (Procedure Already In Progress) and must not wipe the one still arriving.
+        let opensReport = request.opcode == .reportStoredRecords && !isReportInProgress
+        if opensReport {
             reportedRecords.removeAll()
             reportedDuplicateCount = 0
             isReportInProgress = true
@@ -470,10 +473,21 @@ class CGMClientViewModel: ObservableObject {
         collector.sendRACPRequest(request) { [weak self] message in
             guard let self else { return }
             self.racpMessage = (self.racpMessage ?? "") + "\n" + message
-            // The Response Code indication closes the report; records arrived before it.
-            if message.contains("RACP") || message.contains("error") || message.contains("disconnected") {
+            self.closeReportIfFinished(by: message)
+            // A refusal or lost link ends only the report this request opened.
+            if opensReport, message.contains("error") || message.contains("disconnected") {
                 self.isReportInProgress = false
             }
+        }
+    }
+
+    /// The Response Code indication for Report Stored Records (or a successful Abort) closes the report; the
+    /// records arrived before it. It can reach us through the request's completion or, when a later request
+    /// took over that completion, through the indication delegate, so both paths call this.
+    private func closeReportIfFinished(by message: String) {
+        guard message.hasPrefix("RACP") else { return }
+        if message.contains(CGMRACPOpcode.reportStoredRecords.name) || message.contains(CGMRACPOpcode.abortOperation.name) {
+            isReportInProgress = false
         }
     }
 }
@@ -495,6 +509,8 @@ extension CGMClientViewModel: PeripheralControllerDelegate {
         connectedMessage = "Currently disconnected"
         deviceList.removeAll()
         resetSubscriptions()
+        // Whatever was still being reported is not coming; keep what arrived.
+        isReportInProgress = false
         consoleMessages = "\(#function) wait for the user to switch back to peripheral view\n" + consoleMessages
     }
 
@@ -508,6 +524,7 @@ extension CGMClientViewModel: PeripheralControllerDelegate {
             featureMessage = message
         case CGMCharacteristicUUID.recordAccessControlPoint.cbUUID:
             racpMessage = (racpMessage ?? "") + "\n" + message
+            closeReportIfFinished(by: message)
         case CGMCharacteristicUUID.specificOpsControlPoint.cbUUID:
             cgmcpMessage = (cgmcpMessage ?? "") + "\n" + message
         default:

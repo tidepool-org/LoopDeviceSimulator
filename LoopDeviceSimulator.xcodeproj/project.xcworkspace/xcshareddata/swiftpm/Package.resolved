@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git",
       "state" : {
-        "branch" : "nate/HYDRA/storage-backfill",
-        "revision" : "93e83aac52400bb7d071f4ccf38e92e71e493f66"
+        "branch" : "dev",
+        "revision" : "107beee5ee4a7bf88c6428ce335457726a6305ff"
       }
     },
     {
