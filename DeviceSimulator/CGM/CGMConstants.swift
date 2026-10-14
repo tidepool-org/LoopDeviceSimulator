@@ -18,3 +18,22 @@ struct CGMConstants {
     /// traps when nothing is left to pad, so 31 UTF-8 bytes is the most the key exchange can take.
     static let maxSensorKeyBytes = 31
 }
+
+/// CGM Communication Interval values offered on both sides (CGMS §3.7.2.1). The operand is whole minutes,
+/// so "5 s" is not expressible; 0xFF asks for the fastest the sensor supports, which the simulator treats as
+/// every measurement (5 s when it runs at 5 s). The raw values are the wire bytes.
+enum CommunicationIntervalOption: UInt8, CaseIterable, Hashable, CustomStringConvertible {
+    case off = 0x00
+    case fastest = 0xFF
+    case oneMinute = 1
+    case fiveMinutes = 5
+
+    var description: String {
+        switch self {
+        case .off: return "Off"
+        case .fastest: return "Fastest (5 s)"
+        case .oneMinute: return "1 min"
+        case .fiveMinutes: return "5 min"
+        }
+    }
+}

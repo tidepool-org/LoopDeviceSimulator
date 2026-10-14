@@ -31,6 +31,7 @@ struct CGMServerView: View {
                 Text("Number of Subscribed Devices: \(viewModel.numberOfSubscribedDevices)")
                 measurementCard
                 recordsCard
+                specificOpsCard
                 glucoseSourceCard
                 sessionCard
                 serverCard
@@ -42,7 +43,7 @@ struct CGMServerView: View {
     }
 
     private var measurementCard: some View {
-        RoundedCard(title: "Measurements", footer: "Time Offset has one-minute resolution, so 5 s readings share an offset. Readings are notified to a subscribed collector.") {
+        RoundedCard(title: "Measurements", footer: "The interval is the CGM Communication Interval: readings are taken and notified at this cadence, a collector's Set Communication Interval moves the picker (Fastest = 5 s), and Off stops periodic readings so only RACP serves the collector. Time Offset has one-minute resolution, so 5 s readings share an offset.") {
             RoundedCardValueRow(label: "Last Glucose", value: viewModel.lastGlucoseString)
             RoundedCardValueRow(label: "Measurements This Session", value: "\(viewModel.measurementCount)")
             // Ticks once a second; the sensor's timer fire date is the single source of truth.
@@ -50,7 +51,10 @@ struct CGMServerView: View {
                 RoundedCardValueRow(label: "Next Measurement", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
             }
             Divider()
-            labeledPicker("Measurement Interval", selection: $viewModel.measurementInterval)
+            labeledPicker("Communication Interval", selection: $viewModel.measurementInterval)
+            if let note = viewModel.measurementIntervalNote {
+                RoundedCardValueRow(label: "Current", value: note)
+            }
             Divider()
             Button(action: viewModel.takeMeasurement) {
                 Text("Measure Now")
@@ -81,6 +85,31 @@ struct CGMServerView: View {
             Button("Backfill from Glucose Source", action: viewModel.backfill)
                 .padding(.vertical, 4)
             if let message = viewModel.recordSettingsMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    /// What the collector has configured through the CGM Specific Ops Control Point (CGMS §3.7).
+    private var specificOpsCard: some View {
+        RoundedCard(title: "CGM Specific Ops", footer: "Set by the collector through the CGMCP; the Communication Interval lives in the Measurements card. Levels must be within \(Int(CGMAlertLevels.glucoseRange.lowerBound))–\(Int(CGMAlertLevels.glucoseRange.upperBound)) mg/dL and rates within ±\(Int(CGMAlertLevels.rateRange.upperBound)) mg/dL/min, otherwise the sensor answers Parameter Out of Range. Each reading is compared against the levels and the bits it trips appear in its Sensor Status. Calibration Schedule: Never asks nothing; Once recommends a calibration at session start and requires one after 3 h without it; 10 min and 24 h recommend at session start, require one interval in, then after each calibration recommend ahead of the next due time (20 min, or half a short interval) and require once it passes; Now keeps Calibration Required on. A successful calibration clears the bits and any toggled request.") {
+            RoundedCardValueRow(label: "Patient High", value: "\(viewModel.alertLevels.patientHigh.compactDescription) mg/dL")
+            RoundedCardValueRow(label: "Patient Low", value: "\(viewModel.alertLevels.patientLow.compactDescription) mg/dL")
+            RoundedCardValueRow(label: "Hypo", value: "\(viewModel.alertLevels.hypo.compactDescription) mg/dL")
+            RoundedCardValueRow(label: "Hyper", value: "\(viewModel.alertLevels.hyper.compactDescription) mg/dL")
+            RoundedCardValueRow(label: "Rate of Decrease", value: "\(viewModel.alertLevels.rateOfDecrease.compactDescription) mg/dL/min")
+            RoundedCardValueRow(label: "Rate of Increase", value: "\(viewModel.alertLevels.rateOfIncrease.compactDescription) mg/dL/min")
+            RoundedCardValueRow(label: "Alerts Tripped", value: viewModel.alertStatusString)
+            Button("Reset Alert Levels", action: viewModel.resetAlertLevels)
+                .padding(.vertical, 4)
+            Divider()
+            RoundedCardValueRow(label: "Calibrations Stored", value: "\(viewModel.calibrationCount)")
+            RoundedCardValueRow(label: "Last Calibration", value: viewModel.lastCalibrationString)
+            RoundedCardValueRow(label: "Calibration Status", value: viewModel.calibrationStatusString)
+            labeledPicker("Calibration Schedule", selection: $viewModel.calibrationSchedule)
+            Button("Clear Calibrations", action: viewModel.clearCalibrations)
+                .padding(.vertical, 4)
+            if let message = viewModel.specificOpsMessage {
                 MessageView(message: message)
             }
         }

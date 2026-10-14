@@ -11,15 +11,18 @@ import CoreBluetooth
 import BluetoothCommonKit
 import ContinuousGlucoseMonitorServiceKit
 
-/// Measurement cadences offered to the tester (HYD-G-001). Seconds-level options exist for quick checks;
-/// Time Offset only has one-minute resolution, so 5 s readings share an offset.
+/// Measurement cadences offered to the tester (HYD-G-001); the same setting the collector changes with
+/// Set CGM Communication Interval, so the two pickers mirror each other (Fastest = 5 s). Time Offset only has
+/// one-minute resolution, so 5 s readings share an offset. Off stops periodic readings and notifications.
 enum MeasurementIntervalOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
+    case off = 0
     case fiveSeconds = 5
     case oneMinute = 60
     case fiveMinutes = 300
 
     var description: String {
         switch self {
+        case .off: return "Off"
         case .fiveSeconds: return "5 s"
         case .oneMinute: return "1 min"
         case .fiveMinutes: return "5 min"
@@ -55,6 +58,40 @@ enum RecordsPerNotificationOption: Int, CaseIterable, Hashable, CustomStringConv
     case eight = 8
 
     var description: String { String(rawValue) }
+}
+
+/// How often the sensor asks the collector for a calibration (CGMS §3.7.2.2 Next Calibration Time).
+enum CalibrationScheduleOption: CaseIterable, Hashable, CustomStringConvertible {
+    case never
+    case oncePerSession
+    case tenMinutes
+    case daily
+    case immediately
+
+    var schedule: CGMCalibrationSchedule {
+        switch self {
+        case .never: return .never
+        case .oncePerSession: return .oncePerSession
+        case .tenMinutes: return .every(minutes: 10)
+        case .daily: return .every(minutes: 1440)
+        case .immediately: return .immediately
+        }
+    }
+
+    init?(schedule: CGMCalibrationSchedule) {
+        guard let option = Self.allCases.first(where: { $0.schedule == schedule }) else { return nil }
+        self = option
+    }
+
+    var description: String {
+        switch self {
+        case .never: return "Never"
+        case .oncePerSession: return "Once"
+        case .tenMinutes: return "10 min"
+        case .daily: return "24 h"
+        case .immediately: return "Now"
+        }
+    }
 }
 
 /// What drives the simulated glucose values.
@@ -116,7 +153,7 @@ class CGMServerViewModel {
     var measurementInterval: MeasurementIntervalOption = .fiveMinutes {
         didSet {
             guard oldValue != measurementInterval else { return }
-            sensor?.measurementInterval = measurementInterval.rawValue
+            applyMeasurementInterval(to: sensor)
         }
     }
 
@@ -132,6 +169,23 @@ class CGMServerViewModel {
     }
     var recordSettingsMessage: String? = nil
     var backfillDuration: BackfillDurationOption = .oneHour
+
+    // CGM Specific Ops state (CGMS §3.7): set by the collector, mirrored here so a tester can confirm it landed.
+    /// The sensor's cadence when a collector wrote an interval the picker cannot show (e.g. 10 min).
+    var measurementIntervalNote: String? = nil
+    var alertLevels = CGMAlertLevels()
+    var alertStatusString: String = "none"
+    var calibrationCount: Int = 0
+    var lastCalibrationString: String = "none"
+    /// Applies at once; while powered off the next start picks it up.
+    var calibrationSchedule: CalibrationScheduleOption = .oncePerSession {
+        didSet {
+            guard oldValue != calibrationSchedule else { return }
+            sensor?.calibrationSchedule = calibrationSchedule.schedule
+        }
+    }
+    var calibrationStatusString: String = "none"
+    var specificOpsMessage: String? = nil
 
     // Mirrors of sensor state for display
     var sessionStateString: String = ""
@@ -174,6 +228,7 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedRunTime = CGMSessionRunTime(hours: 240)
     @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = .simulatorDefault
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
+    @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -203,11 +258,13 @@ class CGMServerViewModel {
         )
         sensor.manualSensorStatus = preservedManualStatus
         sensor.sessionRunTime = preservedRunTime
-        sensor.measurementInterval = measurementInterval.rawValue
+        applyMeasurementInterval(to: sensor)
         sensor.trace = preservedTrace
         sensor.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         sensor.recordStore.capacity = preservedRecordCapacity
         sensor.recordsPerNotification = recordsPerNotification.rawValue
+        sensor.alertLevels = preservedAlertLevels
+        sensor.calibrationSchedule = calibrationSchedule.schedule
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -233,6 +290,7 @@ class CGMServerViewModel {
             preservedRunTime = sensor.sessionRunTime
             preservedTrace = sensor.trace
             preservedRecordCapacity = sensor.recordStore.capacity
+            preservedAlertLevels = sensor.alertLevels
         }
         server?.disconnect()
         server = nil
@@ -250,6 +308,53 @@ class CGMServerViewModel {
         nextMeasurementDate = nil
         isSecurityEstablished = false
         storedRecordCount = 0
+        measurementIntervalNote = nil
+        alertStatusString = "none"
+        calibrationCount = 0
+        lastCalibrationString = "none"
+        calibrationStatusString = "none"
+    }
+
+    // MARK: - CGM Specific Ops
+
+    /// Forgets the stored calibrations so a Get answers the record 0 placeholder again.
+    func clearCalibrations() {
+        sensor?.calibrationStore.removeAll()
+    }
+
+    /// Puts the alert levels back to the sensor defaults, e.g. after a tester drove them somewhere odd.
+    func resetAlertLevels() {
+        if let sensor {
+            sensor.alertLevels = CGMAlertLevels()
+        } else {
+            preservedAlertLevels = CGMAlertLevels()
+            alertLevels = preservedAlertLevels
+        }
+    }
+
+    /// Off stops the periodic readings; any other option sets the cadence and makes sure they run.
+    private func applyMeasurementInterval(to sensor: MockCGMSensor?) {
+        guard let sensor else { return }
+        if measurementInterval == .off {
+            sensor.isPeriodicCommunicationEnabled = false
+        } else {
+            sensor.measurementInterval = measurementInterval.rawValue
+            sensor.isPeriodicCommunicationEnabled = true
+        }
+    }
+
+    /// Moves the picker to the sensor's cadence when it is one of the options (a collector can set any
+    /// whole number of minutes); otherwise the actual value is shown as a note.
+    private func syncMeasurementInterval(from sensor: MockCGMSensor) {
+        if !sensor.isPeriodicCommunicationEnabled {
+            measurementInterval = .off
+            measurementIntervalNote = nil
+        } else if let option = MeasurementIntervalOption(rawValue: sensor.measurementInterval) {
+            measurementInterval = option
+            measurementIntervalNote = nil
+        } else {
+            measurementIntervalNote = "\(sensor.communicationInterval) min (written by collector)"
+        }
     }
 
     // MARK: - Record database
@@ -467,10 +572,16 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         nextMeasurementDate = sensor.nextMeasurementDate
         featureFlags = sensor.feature.flags
         manualSensorStatus = sensor.manualSensorStatus
-        if let option = MeasurementIntervalOption(rawValue: sensor.measurementInterval) {
-            measurementInterval = option
-        }
+        syncMeasurementInterval(from: sensor)
         storedRecordCount = sensor.recordStore.count
+        alertLevels = sensor.alertLevels
+        alertStatusString = sensor.alertStatus.isEmpty ? "none" : String(describing: sensor.alertStatus)
+        calibrationCount = sensor.calibrationStore.count
+        lastCalibrationString = sensor.calibrationStore.last.map { String(describing: $0) } ?? "none"
+        calibrationStatusString = sensor.calibrationStatus.isEmpty ? "none" : String(describing: sensor.calibrationStatus)
+        if let option = CalibrationScheduleOption(schedule: sensor.calibrationSchedule) {
+            calibrationSchedule = option
+        }
         isAuthorizationControlEnabled = sensor.isAuthorizationControlEnabled
         isSecurityEstablished = sensor.isSecurityEstablished
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""

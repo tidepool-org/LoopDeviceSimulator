@@ -192,6 +192,30 @@ class CGMClientViewModel: ObservableObject {
         collector?.onSecurityStateChange = { [weak self] in
             self?.syncSecurityState()
         }
+        collector?.onSpecificOpsResponse = { [weak self] response in
+            self?.mirrorSpecificOpsResponse(response)
+        }
+    }
+
+    /// A Get answer moves the matching entry to what the sensor holds, so the picker shows the sensor's value
+    /// rather than the tester's last choice. A communication interval outside the offered options is left to
+    /// the message text.
+    private func mirrorSpecificOpsResponse(_ response: CGMSpecificOpsResponse) {
+        switch response {
+        case .communicationInterval(let minutes):
+            if let option = CommunicationIntervalOption(rawValue: minutes) {
+                communicationInterval = option
+            }
+        case .level(_, let value):
+            alertLevelEntry = value.isFinite ? value.compactDescription : alertLevelEntry
+        case let .responseCode(request, code):
+            // A new session has a new start time; refresh it so calibrations are stamped against the right one.
+            if request == CGMSpecificOpsOpcode.startSession.rawValue, code == CGMSpecificOpsResponseCode.success.rawValue {
+                collector?.readSessionStartTime { [weak self] in self?.readSessionStartTimeMessage = $0 }
+            }
+        case .calibrationValue:
+            break
+        }
     }
 
     /// Tears the controller down so no callback can restart scanning after the view is gone; `startClient`
@@ -315,22 +339,33 @@ class CGMClientViewModel: ObservableObject {
     // MARK: - Writes
 
     func writeSessionStartTime() {
-        collector?.writeSessionStartTime { self.writeSessionStartTimeMessage = $0 }
+        collector?.writeSessionStartTime { [weak self] message in
+            guard let self else { return }
+            self.writeSessionStartTimeMessage = message
+            // The sensor re-derives its start time from the write (§3.4.1); refresh the copy used to stamp
+            // calibrations. A refused write leaves the old value, which is still the sensor's.
+            guard !message.contains("error") else { return }
+            self.collector?.readSessionStartTime { [weak self] in self?.readSessionStartTimeMessage = $0 }
+        }
     }
 
     // MARK: - CGM Specific Ops Control Point
 
     /// Every request op code is offered (CGMS Table 3.6); the operand entries below apply to the selected one.
     @Published var selectedSpecificOp: CGMSpecificOpsOpcode = .getCommunicationInterval
-    @Published var communicationIntervalEntry = "5"
+    @Published var communicationInterval: CommunicationIntervalOption = .fiveMinutes
     @Published var calibrationRecordNumberEntry = String(CGMCalibrationRecord.lastRecordNumber)
     @Published var calibrationGlucoseEntry = "120"
-    @Published var calibrationTimeEntry = "0"
-    @Published var nextCalibrationTimeEntry = "0"
     @Published var alertLevelEntry = "180"
 
     var specificOpsOperand: CGMSpecificOpsOperand {
         selectedSpecificOp.requestOperand ?? CGMSpecificOpsOperand.none
+    }
+
+    /// Minutes since the sensor's Session Start Time as last read; nil until it has been read.
+    private var currentTimeOffset: UInt16? {
+        guard let start = collector?.sessionStartTime?.date else { return nil }
+        return UInt16(clamping: max(0, Int(Date().timeIntervalSince(start) / 60)))
     }
 
     func startSession() {
@@ -356,11 +391,7 @@ class CGMClientViewModel: ObservableObject {
         case .none:
             request = CGMSpecificOpsRequest.encode(opcode, e2eCRC: e2eCRC)
         case .communicationIntervalMinutes:
-            guard let minutes = UInt8(communicationIntervalEntry) else {
-                cgmcpMessage = "Communication interval must be 0–255 minutes"
-                return
-            }
-            request = CGMSpecificOpsRequest.setCommunicationInterval(minutes: minutes, e2eCRC: e2eCRC)
+            request = CGMSpecificOpsRequest.setCommunicationInterval(minutes: communicationInterval.rawValue, e2eCRC: e2eCRC)
         case .calibrationRecordNumber:
             guard let number = UInt16(calibrationRecordNumberEntry) else {
                 cgmcpMessage = "Record number must be 0–65535 (65535 = last)"
@@ -368,13 +399,18 @@ class CGMClientViewModel: ObservableObject {
             }
             request = CGMSpecificOpsRequest.getGlucoseCalibrationValue(recordNumber: number, e2eCRC: e2eCRC)
         case .calibrationRecord:
-            guard let glucose = calibrationGlucoseEntry.parsedDouble, let time = UInt16(calibrationTimeEntry),
-                  let next = UInt16(nextCalibrationTimeEntry)
-            else {
-                cgmcpMessage = "Calibration needs a numeric glucose and 0–65535 minute offsets"
+            guard let glucose = calibrationGlucoseEntry.parsedDouble else {
+                cgmcpMessage = "Calibration glucose must be numeric"
                 return
             }
-            let record = CGMCalibrationRecord(glucoseConcentration: glucose, calibrationTime: time, nextCalibrationTime: next)
+            // The fingerstick is taken as the tap happens: Calibration Time is now, in minutes since the
+            // sensor's Session Start Time (Table 3.7). Next Calibration Time, Record Number and Status are the
+            // sensor's to fill in and are sent as zero.
+            guard let calibrationTime = currentTimeOffset else {
+                cgmcpMessage = "Read Session Start Time first so the calibration can be stamped"
+                return
+            }
+            let record = CGMCalibrationRecord(glucoseConcentration: glucose, calibrationTime: calibrationTime)
             request = CGMSpecificOpsRequest.setGlucoseCalibrationValue(record, e2eCRC: e2eCRC)
         case .glucoseLevel, .rateLevel:
             guard let level = alertLevelEntry.parsedDouble else {

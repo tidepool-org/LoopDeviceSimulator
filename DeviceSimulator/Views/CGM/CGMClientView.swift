@@ -170,13 +170,11 @@ struct CGMClientView: View {
         case .none:
             EmptyView()
         case .communicationIntervalMinutes:
-            numberRow("Interval (min; 0 = off, 255 = fastest)", text: $viewModel.communicationIntervalEntry)
+            labeledPicker("Communication Interval (Off = no periodic notifications, Fastest = every measurement)", selection: $viewModel.communicationInterval)
         case .calibrationRecordNumber:
             numberRow("Record Number (65535 = last)", text: $viewModel.calibrationRecordNumberEntry)
         case .calibrationRecord:
             numberRow("Glucose (mg/dL)", text: $viewModel.calibrationGlucoseEntry)
-            numberRow("Calibration Time (min offset)", text: $viewModel.calibrationTimeEntry)
-            numberRow("Next Calibration (min offset)", text: $viewModel.nextCalibrationTimeEntry)
         case .glucoseLevel:
             numberRow("Level (mg/dL)", text: $viewModel.alertLevelEntry)
         case .rateLevel:
@@ -221,6 +219,20 @@ struct CGMClientView: View {
 
     private func numberRow(_ label: String, text: Binding<String>) -> some View {
         entryRow(label, text: text, keyboardType: .decimalPad, maxLength: 7)
+    }
+
+    /// Segmented pickers hide their title, so the label sits above the control.
+    private func labeledPicker<Option: Hashable & CaseIterable & CustomStringConvertible>(_ label: String, selection: Binding<Option>) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(label)
+            Picker(label, selection: selection) {
+                ForEach(Array(Option.allCases), id: \.self) { option in
+                    Text(option.description).tag(option)
+                }
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(.vertical, 4)
     }
 
     private func textRow(_ label: String, text: Binding<String>) -> some View {
