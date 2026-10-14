@@ -820,7 +820,7 @@
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git";
 			requirement = {
-				branch = dev;
+				branch = "nate/HYDRA/cgm-acs";
 				kind = branch;
 			};
 		};

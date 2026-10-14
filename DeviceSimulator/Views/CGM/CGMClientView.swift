@@ -18,6 +18,7 @@ struct CGMClientView: View {
                 RoundedCardScrollView(title: "CGM Collector Client") {
                     connectionCard
                     configurationCard
+                    authorizationCard
                     lastMeasurementCard
                     readCard
                     sessionCard
@@ -65,6 +66,28 @@ struct CGMClientView: View {
             Toggle("Record Access Control Point (indicate)", isOn: $viewModel.racpIndicationsEnabled)
             Toggle("CGM Specific Ops Control Point (indicate)", isOn: $viewModel.cgmcpIndicationsEnabled)
             if let message = viewModel.configureMessage {
+                MessageView(message: message)
+            }
+        }
+    }
+
+    /// ACS: run the key exchange, then route CGM traffic through AC Data In / Out. Needed whenever the
+    /// sensor's Authorization Control toggle is on; harmless otherwise.
+    private var authorizationCard: some View {
+        RoundedCard(title: "Authorization Control (ACS)", footer: "With Authorization Control on, the sensor answers Insufficient Authorization on the plain CGM characteristics until the key exchange completes. Measurements then arrive encrypted on AC Data Out. The sensor key must match the one shown on the sensor (default \(CGMConstants.oobRandomNumber)); a different key makes the confirmation fail.") {
+            RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
+            textRow("Sensor Key", text: $viewModel.sensorKeyEntry)
+            Toggle("Use Secure Channel", isOn: $viewModel.usesSecureChannel)
+                .disabled(!viewModel.isSecurityEstablished)
+            Divider()
+            HStack {
+                Button("Establish Secure Session", action: viewModel.establishSecureSession)
+                Spacer()
+                Button("Invalidate Key", action: viewModel.invalidateKey)
+                    .disabled(!viewModel.isSecurityEstablished)
+            }
+            .padding(.vertical, 4)
+            if let message = viewModel.authorizationMessage {
                 MessageView(message: message)
             }
         }
@@ -191,6 +214,14 @@ struct CGMClientView: View {
     }
 
     private func numberRow(_ label: String, text: Binding<String>) -> some View {
+        entryRow(label, text: text, keyboardType: .decimalPad, maxLength: 7)
+    }
+
+    private func textRow(_ label: String, text: Binding<String>) -> some View {
+        entryRow(label, text: text, keyboardType: .default, maxLength: 32)
+    }
+
+    private func entryRow(_ label: String, text: Binding<String>, keyboardType: UIKeyboardType, maxLength: Int) -> some View {
         HStack {
             Text(label)
             Spacer()
@@ -200,9 +231,9 @@ struct CGMClientView: View {
                 font: .preferredFont(forTextStyle: .headline),
                 textColor: .blue,
                 textAlignment: .right,
-                keyboardType: .decimalPad,
+                keyboardType: keyboardType,
                 shouldBecomeFirstResponder: false,
-                maxLength: 7,
+                maxLength: maxLength,
                 doneButtonColor: UIColor(Color.accentColor),
                 textFieldDidBeginEditing: nil
             )

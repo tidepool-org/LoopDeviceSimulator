@@ -72,6 +72,17 @@ class CGMServerViewModel {
         }
     }
 
+    /// ACS gate: when on, the CGM characteristics are protected resources and the collector must complete
+    /// the key exchange and use AC Data In / Out. Flips live on the sensor; survives a restart.
+    var isAuthorizationControlEnabled = false {
+        didSet {
+            guard oldValue != isAuthorizationControlEnabled else { return }
+            sensor?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
+        }
+    }
+    var isSecurityEstablished = false
+    var oobRandomNumberString: String = ""
+
     var measurementInterval: MeasurementIntervalOption = .fiveMinutes {
         didSet {
             guard oldValue != measurementInterval else { return }
@@ -131,9 +142,10 @@ class CGMServerViewModel {
         if let serverName {
             self.serverName = serverName.isEmpty ? nil : serverName
         }
+        
         let server = GATTServer(
             advertisedName: self.serverName ?? CGMConstants.serverName,
-            advertisedServices: [CGMCharacteristicUUID.service.cbUUID]
+            advertisedServices: [CGMCharacteristicUUID.service.cbUUID, ACCharacteristicUUID.service.cbUUID]
         )
         self.server = server
         server.delegate = self
@@ -149,6 +161,7 @@ class CGMServerViewModel {
         sensor.sessionRunTime = preservedRunTime
         sensor.measurementInterval = measurementInterval.rawValue
         sensor.trace = preservedTrace
+        sensor.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -188,6 +201,7 @@ class CGMServerViewModel {
         lastGlucoseString = ""
         measurementCount = 0
         nextMeasurementDate = nil
+        isSecurityEstablished = false
     }
 
     /// Recreates the server only when the sensor is meant to be on; otherwise the radio stays silent.
@@ -375,5 +389,8 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         if let option = MeasurementIntervalOption(rawValue: sensor.measurementInterval) {
             measurementInterval = option
         }
+        isAuthorizationControlEnabled = sensor.isAuthorizationControlEnabled
+        isSecurityEstablished = sensor.isSecurityEstablished
+        oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""
     }
 }

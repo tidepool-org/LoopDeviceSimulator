@@ -163,6 +163,11 @@ struct CGMServerView: View {
             RoundedCardToggleRow(label: "Power On Sensor", enabled: $viewModel.isSensorPoweredOn, toggleTintColor: .accentColor)
             Divider()
             RoundedCardToggleRow(label: "Require Encrypted Link / Bond (restarts server)", enabled: $viewModel.requiresEncryption, toggleTintColor: .accentColor)
+            Divider()
+            // ACS: application-layer secure channel, independent of the BLE bond above.
+            RoundedCardToggleRow(label: "Authorization Control (ACS) Required", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
+            RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
+            RoundedCardValueRow(label: "Sensor Key", value: viewModel.oobRandomNumberString)
         }
     }
 
