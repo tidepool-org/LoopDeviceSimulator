@@ -105,12 +105,15 @@ class PeripheralController: NSObject, CBCentralManagerDelegate, CBPeripheralDele
 
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
         print(peripheral, " AD data: ", advertisementData)
-        guard let peripheralName = peripheral.name else { return }
+        // A Mac (or any peripheral) may advertise the service without a name the system has cached yet;
+        // dropping it would hide a perfectly connectable sensor. Fall back to the advertised or a placeholder name.
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let peripheralName = peripheral.name ?? advertisedName ?? "Unnamed \(peripheral.identifier.uuidString.prefix(8))"
         delegate?.peripheralDiscovered(
             sender: self,
             peripheralID: peripheral.identifier,
             peripheralName: peripheralName,
-            advertisingName: advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? "unknown",
+            advertisingName: advertisedName ?? "unknown",
             serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data],
             rssi: RSSI
         )

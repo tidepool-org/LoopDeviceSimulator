@@ -118,7 +118,8 @@ class CGMCollectorController: PeripheralController {
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         guard error == nil, let data = characteristic.value else {
-            deliver("error reading \(characteristic.uuid): \(String(describing: error))", for: characteristic.uuid)
+            let reason = error?.cgmATTDescription ?? "no value"
+            deliver("error reading \(characteristic.uuid): \(reason)", for: characteristic.uuid)
             return
         }
 
@@ -142,8 +143,7 @@ class CGMCollectorController: PeripheralController {
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         let uuid = characteristic.uuid
         if let error {
-            let code = (error as NSError).code
-            let message = "ATT error \(code) (0x\(String(code, radix: 16))) writing \(uuid): \(error.localizedDescription)"
+            let message = "\(error.cgmATTDescription) writing \(uuid)"
             switch uuid {
             case ACCharacteristicUUID.controlPoint.cbUUID:
                 failHandshake(message)

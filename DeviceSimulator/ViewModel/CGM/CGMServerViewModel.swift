@@ -27,6 +27,36 @@ enum MeasurementIntervalOption: TimeInterval, CaseIterable, Hashable, CustomStri
     }
 }
 
+/// Spans of unattended running a tester can add to the record database in one tap.
+enum BackfillDurationOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
+    case fifteenMinutes = 900
+    case oneHour = 3600
+    case threeHours = 10800
+    case eightHours = 28800
+    case oneDay = 86400
+
+    var description: String {
+        switch self {
+        case .fifteenMinutes: return "15 min"
+        case .oneHour: return "1 h"
+        case .threeHours: return "3 h"
+        case .eightHours: return "8 h"
+        case .oneDay: return "24 h"
+        }
+    }
+}
+
+/// Records packed into one CGM Measurement notification during an RACP report. Eight of the largest
+/// record (15 octets) stays under any ATT MTU a collector negotiates; Core Bluetooth truncates oversize notifications.
+enum RecordsPerNotificationOption: Int, CaseIterable, Hashable, CustomStringConvertible {
+    case one = 1
+    case two = 2
+    case four = 4
+    case eight = 8
+
+    var description: String { String(rawValue) }
+}
+
 /// What drives the simulated glucose values.
 enum GlucoseSourceOption: Hashable, CustomStringConvertible {
     case sineWave
@@ -90,6 +120,19 @@ class CGMServerViewModel {
         }
     }
 
+    // Record database (CGMS §3.6): what the collector can backfill through RACP.
+    var storedRecordCount: Int = 0
+    var recordCapacityEntry: String = String(CGMRecordStore.defaultCapacity)
+    /// Applies at once; while powered off the next start picks it up.
+    var recordsPerNotification: RecordsPerNotificationOption = .eight {
+        didSet {
+            guard oldValue != recordsPerNotification else { return }
+            sensor?.recordsPerNotification = recordsPerNotification.rawValue
+        }
+    }
+    var recordSettingsMessage: String? = nil
+    var backfillDuration: BackfillDurationOption = .oneHour
+
     // Mirrors of sensor state for display
     var sessionStateString: String = ""
     var sessionStartTimeString: String = ""
@@ -130,6 +173,7 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedManualStatus: CGMSensorStatusAnnunciation = []
     @ObservationIgnored private var preservedRunTime = CGMSessionRunTime(hours: 240)
     @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = .simulatorDefault
+    @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -162,6 +206,8 @@ class CGMServerViewModel {
         sensor.measurementInterval = measurementInterval.rawValue
         sensor.trace = preservedTrace
         sensor.isAuthorizationControlEnabled = isAuthorizationControlEnabled
+        sensor.recordStore.capacity = preservedRecordCapacity
+        sensor.recordsPerNotification = recordsPerNotification.rawValue
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -186,6 +232,7 @@ class CGMServerViewModel {
             preservedManualStatus = sensor.manualSensorStatus
             preservedRunTime = sensor.sessionRunTime
             preservedTrace = sensor.trace
+            preservedRecordCapacity = sensor.recordStore.capacity
         }
         server?.disconnect()
         server = nil
@@ -202,6 +249,40 @@ class CGMServerViewModel {
         measurementCount = 0
         nextMeasurementDate = nil
         isSecurityEstablished = false
+        storedRecordCount = 0
+    }
+
+    // MARK: - Record database
+
+    /// Applies the capacity entry; a bad entry is reported, not applied.
+    func applyRecordSettings() {
+        guard let sensor else { return }
+        guard let capacity = Int(recordCapacityEntry), capacity >= 1 else {
+            recordSettingsMessage = "Capacity must be a whole number of at least 1"
+            return
+        }
+        sensor.recordStore.capacity = capacity
+        recordSettingsMessage = nil
+        mockSensorDidUpdate(sensor)
+    }
+
+    /// Empties the database without touching the session, so a tester can re-run a backfill from scratch.
+    func clearRecords() {
+        sensor?.recordStore.removeAll()
+    }
+
+    /// Adds the selected span of history from the active glucose source, as if the collector had been away.
+    func backfill() {
+        guard let sensor else { return }
+        guard sensor.sessionState == .running else {
+            recordSettingsMessage = "Start a session before backfilling"
+            return
+        }
+        let added = sensor.backfill(duration: backfillDuration.rawValue)
+        recordSettingsMessage = added > 0
+            ? "Added \(added) records covering the last \(backfillDuration); time offset is now \(sensor.timeOffset) min"
+            : "Nothing added: the measurement interval is longer than \(backfillDuration)"
+        mockSensorDidUpdate(sensor)
     }
 
     /// Recreates the server only when the sensor is meant to be on; otherwise the radio stays silent.
@@ -389,6 +470,7 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         if let option = MeasurementIntervalOption(rawValue: sensor.measurementInterval) {
             measurementInterval = option
         }
+        storedRecordCount = sensor.recordStore.count
         isAuthorizationControlEnabled = sensor.isAuthorizationControlEnabled
         isSecurityEstablished = sensor.isSecurityEstablished
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""

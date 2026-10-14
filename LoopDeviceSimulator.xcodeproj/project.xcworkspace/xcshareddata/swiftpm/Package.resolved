@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git",
       "state" : {
-        "branch" : "nate/HYDRA/cgm-acs",
-        "revision" : "0b5078976bc2a60cab10f1086f57e7d81676e0d4"
+        "branch" : "dev",
+        "revision" : "107beee5ee4a7bf88c6428ce335457726a6305ff"
       }
     },
     {
