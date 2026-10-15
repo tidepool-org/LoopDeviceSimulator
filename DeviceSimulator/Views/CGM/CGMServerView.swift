@@ -15,8 +15,20 @@ struct CGMServerView: View {
     /// Advertised local name, from the root list's Server Name field.
     var serverName: String? = nil
 
+    /// Two pages: the HUD lands first, the full configuration is one swipe to the right (Nate, 2026-10-15).
+    @State private var page = 0
+
     var body: some View {
-        cgmServer
+        TabView(selection: $page) {
+            CGMSensorHUDView(viewModel: viewModel)
+                .tag(0)
+            cgmServer
+                .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .navigationTitle("CGM Sensor")
+        .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 if viewModel.isSensorPoweredOn {
                     viewModel.startServer(serverName: serverName)
@@ -27,7 +39,8 @@ struct CGMServerView: View {
 
     private var cgmServer: some View {
         VStack {
-            RoundedCardScrollView(title: "CGM Sensor Server") {
+            // No page title: the navigation bar already says CGM Sensor and the HUD is one swipe left.
+            RoundedCardScrollView {
                 Text("Number of Subscribed Devices: \(viewModel.numberOfSubscribedDevices)")
                 measurementCard
                 recordsCard
@@ -40,6 +53,8 @@ struct CGMServerView: View {
                 sensorStatusCard
                 errorHandlingCard
             }
+            // The page control overlays the bottom of the TabView; keep the last card's controls above it.
+            .contentMargins(.bottom, CGMSensorHUDView.pageControlClearance, for: .scrollContent)
         }
     }
 
@@ -49,7 +64,7 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Measurements This Session", value: "\(viewModel.measurementCount)")
             // Ticks once a second; the sensor's timer fire date is the single source of truth.
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                RoundedCardValueRow(label: "Next Measurement", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
+                RoundedCardValueRow(label: "Next Communication", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
             }
             Divider()
             LabeledSegmentedPicker("Communication Interval", selection: $viewModel.measurementInterval)
@@ -64,9 +79,7 @@ struct CGMServerView: View {
     }
 
     private func countdown(to date: Date?, now: Date) -> String {
-        guard let date else { return "session \(viewModel.sessionStateString)" }
-        let remaining = max(0, Int(date.timeIntervalSince(now).rounded(.up)))
-        return remaining >= 60 ? "in \(remaining / 60) min \(remaining % 60) s" : "in \(remaining) s"
+        date?.countdown(from: now) ?? "session \(viewModel.sessionStateString)"
     }
 
     /// The measurement database behind RACP: every reading of the session, kept while the collector is away.
@@ -304,6 +317,27 @@ struct CGMServerView: View {
 
 struct CGMServerView_Previews: PreviewProvider {
     static var previews: some View {
-        CGMServerView(viewModel: CGMServerViewModel())
+        // Inside a stack so the preview spends the same navigation-bar height as the app.
+        NavigationStack {
+            CGMServerView(viewModel: runningSession)
+        }
+    }
+
+    /// A mid-session snapshot so the HUD renders a value, an arrow and a trace instead of placeholders.
+    static var runningSession: CGMServerViewModel {
+        let viewModel = CGMServerViewModel()
+        viewModel.isSensorPoweredOn = false   // otherwise onAppear starts a real sensor and mirrors it over these
+        viewModel.isSessionRunning = true
+        viewModel.sessionStateString = "running"
+        viewModel.condition = .healthy
+        viewModel.timeOffsetMinutes = 23
+        viewModel.timeOffsetString = "23 min"
+        viewModel.lastGlucose = 128
+        viewModel.lastTrend = 0.6
+        viewModel.recentReadings = stride(from: 0, through: 20, by: 5).enumerated().map { index, offset in
+            CGMReadingPoint(id: index, timeOffset: offset, glucose: 112 + Double(offset) * 0.8)
+        }
+        viewModel.nextMeasurementDate = Date().addingTimeInterval(137)
+        return viewModel
     }
 }

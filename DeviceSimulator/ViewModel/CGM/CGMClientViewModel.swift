@@ -178,6 +178,8 @@ class CGMClientViewModel: ObservableObject {
         collector?.delegate = self
         collector?.onMeasurement = { [weak self] records in
             guard let self else { return }
+            // Every notification is contact with the sensor, even a status-only record identical to the last.
+            self.lastMeasurementReceivedAt = Date()
             let fresh = self.acceptRecords(records)
             if self.isReportInProgress {
                 self.reportedRecords.append(contentsOf: fresh)
@@ -187,7 +189,6 @@ class CGMClientViewModel: ObservableObject {
             guard let latest = fresh.max(by: { $0.timeOffset < $1.timeOffset }) else { return }
             if let last = self.lastMeasurement, latest.timeOffset < last.timeOffset { return }
             self.lastMeasurement = latest
-            self.lastMeasurementReceivedAt = Date()
         }
         collector?.onSecurityStateChange = { [weak self] in
             self?.syncSecurityState()
