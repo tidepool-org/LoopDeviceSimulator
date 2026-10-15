@@ -60,6 +60,23 @@ enum RecordsPerNotificationOption: Int, CaseIterable, Hashable, CustomStringConv
     var description: String { String(rawValue) }
 }
 
+/// Warm-up after Start Session before readings begin (TBD-03: default 1 min, adjustable while in progress).
+enum WarmupDurationOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
+    case off = 0
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case twoHours = 7200
+
+    var description: String {
+        switch self {
+        case .off: return "Off"
+        case .oneMinute: return "1 min"
+        case .fiveMinutes: return "5 min"
+        case .twoHours: return "2 h"
+        }
+    }
+}
+
 /// How often the sensor asks the collector for a calibration (CGMS §3.7.2.2 Next Calibration Time).
 enum CalibrationScheduleOption: CaseIterable, Hashable, CustomStringConvertible {
     case never
@@ -187,6 +204,24 @@ class CGMServerViewModel {
     var calibrationStatusString: String = "none"
     var specificOpsMessage: String? = nil
 
+    // Lifecycle (CGM-DESIGN §Lifecycle)
+    /// Applies at once, including mid warm-up; while powered off the next start picks it up.
+    var warmupDuration: WarmupDurationOption = .oneMinute {
+        didSet {
+            guard oldValue != warmupDuration else { return }
+            sensor?.warmupDuration = warmupDuration.rawValue
+        }
+    }
+    var warmupEndDate: Date?
+    var conditionString: String = ""
+    var isImpaired = false
+    var isFailed = false
+    var sensorRangeLowEntry: String = "40"
+    var sensorRangeHighEntry: String = "400"
+    var lifecycleMessage: String? = nil
+    /// Newest first, for the Lifecycle card.
+    var lifecycleEventStrings: [String] = []
+
     // Mirrors of sensor state for display
     var sessionStateString: String = ""
     var sessionStartTimeString: String = ""
@@ -229,6 +264,7 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = .simulatorDefault
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
     @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
+    @ObservationIgnored private var preservedSensorRange: ClosedRange<Double> = 40...400
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -265,6 +301,8 @@ class CGMServerViewModel {
         sensor.recordsPerNotification = recordsPerNotification.rawValue
         sensor.alertLevels = preservedAlertLevels
         sensor.calibrationSchedule = calibrationSchedule.schedule
+        sensor.warmupDuration = warmupDuration.rawValue
+        sensor.sensorRange = preservedSensorRange
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -291,6 +329,7 @@ class CGMServerViewModel {
             preservedTrace = sensor.trace
             preservedRecordCapacity = sensor.recordStore.capacity
             preservedAlertLevels = sensor.alertLevels
+            preservedSensorRange = sensor.sensorRange
         }
         server?.disconnect()
         server = nil
@@ -299,6 +338,11 @@ class CGMServerViewModel {
         procedureAlreadyInProgress = false
         outOfRangeSchedule = false
         sessionStateString = ""
+        warmupEndDate = nil
+        conditionString = ""
+        isImpaired = false
+        isFailed = false
+        lifecycleEventStrings = []
         sessionStartTimeString = ""
         timeOffsetString = ""
         sessionRunTimeString = ""
@@ -410,6 +454,40 @@ class CGMServerViewModel {
 
     func takeMeasurement() {
         sensor?.takeMeasurement()
+    }
+
+    // MARK: - Lifecycle
+
+    func replaceSensor() {
+        sensor?.replaceSensor()
+    }
+
+    func failSensor() {
+        sensor?.failSensor()
+    }
+
+    /// One button: begins a temporary issue, or resolves the one in progress.
+    func toggleTemporaryIssue() {
+        guard let sensor else { return }
+        if sensor.condition == .impaired {
+            sensor.resolveTemporaryIssue()
+        } else {
+            sensor.beginTemporaryIssue()
+        }
+    }
+
+    /// Applies the sensor range entries (HYD-G-003); a bad entry is reported, not applied.
+    func applySensorRange() {
+        guard let low = sensorRangeLowEntry.parsedDouble, let high = sensorRangeHighEntry.parsedDouble, low.isFinite, high.isFinite, low < high else {
+            lifecycleMessage = "Sensor range needs numeric low < high"
+            return
+        }
+        lifecycleMessage = nil
+        if let sensor {
+            sensor.sensorRange = low...high
+        } else {
+            preservedSensorRange = low...high
+        }
     }
 
     func applySessionRunTime() {
@@ -558,7 +636,15 @@ extension CGMServerViewModel: GATTServiceDelegate {
 
 extension CGMServerViewModel: MockCGMSensorDelegate {
     func mockSensorDidUpdate(_ sensor: MockCGMSensor) {
-        sessionStateString = String(describing: sensor.sessionState)
+        sessionStateString = sensor.isWarmingUp ? "running (warming up)" : String(describing: sensor.sessionState)
+        warmupEndDate = sensor.warmupEndDate
+        if let option = WarmupDurationOption(rawValue: sensor.warmupDuration) {
+            warmupDuration = option
+        }
+        conditionString = String(describing: sensor.condition)
+        isImpaired = sensor.condition == .impaired
+        isFailed = sensor.condition == .failed
+        lifecycleEventStrings = sensor.lifecycleEvents.suffix(20).reversed().map { String(describing: $0) }
         if let startTime = sensor.sessionStartTime {
             sessionStartTimeString = "\(startTime)\(sensor.sessionStartTimeSetByCollector ? " (written by collector)" : "")"
         } else {

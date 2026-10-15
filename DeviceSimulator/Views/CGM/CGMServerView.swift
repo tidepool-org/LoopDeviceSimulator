@@ -34,6 +34,7 @@ struct CGMServerView: View {
                 specificOpsCard
                 glucoseSourceCard
                 sessionCard
+                lifecycleCard
                 serverCard
                 featureCard
                 sensorStatusCard
@@ -162,6 +163,12 @@ struct CGMServerView: View {
     private var sessionCard: some View {
         RoundedCard(title: "Session") {
             RoundedCardValueRow(label: "State", value: viewModel.sessionStateString)
+            RoundedCardValueRow(label: "Condition", value: viewModel.conditionString)
+            if viewModel.warmupEndDate != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    RoundedCardValueRow(label: "Warm-up Ends", value: countdown(to: viewModel.warmupEndDate, now: context.date))
+                }
+            }
             RoundedCardValueRow(label: "Time Offset", value: viewModel.timeOffsetString)
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
@@ -181,6 +188,45 @@ struct CGMServerView: View {
                 Spacer()
                 Button(action: viewModel.stopSession) {
                     Text("Stop Session")
+                }
+            }
+        }
+    }
+
+    /// Warm-up, sensor condition and range (CGM-DESIGN §Lifecycle; TBD-03/05/07, HYD-G-003/006).
+    private var lifecycleCard: some View {
+        RoundedCard(title: "Sensor Lifecycle", footer: "Warm-up applies to the next session and can be changed while one is in progress. Replace Sensor starts a fresh session with empty records and calibrations and clears any failure. Fail Sensor stops readings and sets Sensor Malfunction until the sensor is replaced; a collector's Start Session answers Procedure Not Completed meanwhile. Temporary Issue keeps readings coming with NaN glucose, zero quality and General Device Fault until resolved. Readings outside the sensor range are reported at the boundary with the Device Can Process bit when the Feature has Sensor Result High-Low Detection. A session also ends by itself when its run time elapses.") {
+            LabeledSegmentedPicker("Warm-up", selection: $viewModel.warmupDuration)
+            Divider()
+            HStack {
+                Button("Replace Sensor", action: viewModel.replaceSensor)
+                Spacer()
+                Button("Fail Sensor", action: viewModel.failSensor)
+                    .disabled(viewModel.isFailed)
+                Spacer()
+                Button(viewModel.isImpaired ? "Resolve Issue" : "Temporary Issue", action: viewModel.toggleTemporaryIssue)
+                    .disabled(viewModel.isFailed)
+            }
+            .padding(.vertical, 4)
+            Divider()
+            numberRow("Sensor Range Low (mg/dL)", text: $viewModel.sensorRangeLowEntry)
+            numberRow("Sensor Range High (mg/dL)", text: $viewModel.sensorRangeHighEntry)
+            Button("Apply Range", action: viewModel.applySensorRange)
+                .padding(.vertical, 4)
+            if let message = viewModel.lifecycleMessage {
+                MessageView(message: message)
+            }
+            Divider()
+            Text("Lifecycle Log")
+            if viewModel.lifecycleEventStrings.isEmpty {
+                Text("No lifecycle events yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(viewModel.lifecycleEventStrings.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
