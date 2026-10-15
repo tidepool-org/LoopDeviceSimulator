@@ -170,13 +170,11 @@ struct CGMClientView: View {
         case .none:
             EmptyView()
         case .communicationIntervalMinutes:
-            numberRow("Interval (min; 0 = off, 255 = fastest)", text: $viewModel.communicationIntervalEntry)
+            LabeledSegmentedPicker("Communication Interval (Off = no periodic notifications, Fastest = every measurement)", selection: $viewModel.communicationInterval)
         case .calibrationRecordNumber:
             numberRow("Record Number (65535 = last)", text: $viewModel.calibrationRecordNumberEntry)
         case .calibrationRecord:
             numberRow("Glucose (mg/dL)", text: $viewModel.calibrationGlucoseEntry)
-            numberRow("Calibration Time (min offset)", text: $viewModel.calibrationTimeEntry)
-            numberRow("Next Calibration (min offset)", text: $viewModel.nextCalibrationTimeEntry)
         case .glucoseLevel:
             numberRow("Level (mg/dL)", text: $viewModel.alertLevelEntry)
         case .rateLevel:

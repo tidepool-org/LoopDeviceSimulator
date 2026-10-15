@@ -33,6 +33,13 @@ class CGMCollectorController: PeripheralController {
     /// Decoded CGM Measurement records, called for every notification (one notification may carry several).
     var onMeasurement: (([CGMMeasurementRecord]) -> Void)?
 
+    /// Every decoded CGMCP indication, so the UI can mirror values the sensor reports (e.g. a Get response).
+    var onSpecificOpsResponse: ((CGMSpecificOpsResponse) -> Void)?
+
+    /// Last Session Start Time read from the sensor (after discovery, on demand, or after Start Session);
+    /// the base for stamping a calibration's Calibration Time (Table 3.7, minutes since session start).
+    private(set) var sessionStartTime: CGMSessionStartTime?
+
     private static let controlPointUUIDs: Set<CBUUID> = [
         CGMCharacteristicUUID.recordAccessControlPoint.cbUUID,
         CGMCharacteristicUUID.specificOpsControlPoint.cbUUID
@@ -89,10 +96,16 @@ class CGMCollectorController: PeripheralController {
               let featureCharacteristic = characteristics.first(where: { $0.uuid == CGMCharacteristicUUID.feature.cbUUID })
         else { return }
         peripheral.readValue(for: featureCharacteristic)
+        // Session Start Time follows (reads are answered in order, so Feature is known when it decodes); it
+        // is needed to stamp calibrations without a manual read.
+        if let startTime = characteristics.first(where: { $0.uuid == CGMCharacteristicUUID.sessionStartTime.cbUUID }) {
+            peripheral.readValue(for: startTime)
+        }
     }
 
     override func peripheralDidDisconnect() {
         feature = nil
+        sessionStartTime = nil
         // The session key and nonce sequence cannot be trusted across a link loss; start over next time.
         let hadSession = isSecurityEstablished || usesSecureChannel
         sharedKeyData = nil
@@ -196,7 +209,9 @@ class CGMCollectorController: PeripheralController {
             case CGMCharacteristicUUID.status.cbUUID:
                 return String(describing: try CGMStatus(data: data, e2eCRC: isE2EProtectionSupported))
             case CGMCharacteristicUUID.sessionStartTime.cbUUID:
-                return String(describing: try CGMSessionStartTime(data: data, e2eCRC: isE2EProtectionSupported))
+                let startTime = try CGMSessionStartTime(data: data, e2eCRC: isE2EProtectionSupported)
+                sessionStartTime = startTime
+                return String(describing: startTime)
             case CGMCharacteristicUUID.sessionRunTime.cbUUID:
                 return String(describing: try CGMSessionRunTime(data: data, e2eCRC: isE2EProtectionSupported))
             case CGMCharacteristicUUID.measurement.cbUUID:
@@ -206,7 +221,9 @@ class CGMCollectorController: PeripheralController {
             case CGMCharacteristicUUID.recordAccessControlPoint.cbUUID:
                 return "RACP \(try CGMRACPResponse(data: data))"
             case CGMCharacteristicUUID.specificOpsControlPoint.cbUUID:
-                return "CGMCP \(try CGMSpecificOpsResponse(data: data, e2eCRC: isE2EProtectionSupported))"
+                let response = try CGMSpecificOpsResponse(data: data, e2eCRC: isE2EProtectionSupported)
+                onSpecificOpsResponse?(response)
+                return "CGMCP \(response)"
             case DeviceInfoCharacteristicUUID.systemID.cbUUID:
                 return "System ID \(data.hexadecimalString)"
             case DeviceInfoCharacteristicUUID.manufacturerNameString.cbUUID,
