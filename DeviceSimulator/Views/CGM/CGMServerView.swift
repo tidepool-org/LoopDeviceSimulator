@@ -17,6 +17,8 @@ struct CGMServerView: View {
 
     /// Two pages: the HUD lands first, the full configuration is one swipe to the right (Nate, 2026-10-15).
     @State private var page = 0
+    /// A sheet rather than a push: pushing would make this view disappear and stop the server.
+    @State private var isShowingLog = false
 
     var body: some View {
         TabView(selection: $page) {
@@ -29,6 +31,21 @@ struct CGMServerView: View {
         .indexViewStyle(.page(backgroundDisplayMode: .always))
         .navigationTitle("CGM Sensor")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingLog = true
+                } label: {
+                    Image(systemName: "list.bullet.rectangle")
+                }
+                .accessibilityLabel("Session Log")
+            }
+        }
+        .sheet(isPresented: $isShowingLog) {
+            NavigationStack {
+                SessionLogView()
+            }
+        }
             .onAppear {
                 if viewModel.isSensorPoweredOn {
                     viewModel.startServer(serverName: serverName)
@@ -158,7 +175,7 @@ struct CGMServerView: View {
                 numberRow("Outlier chance (%)", text: $viewModel.outlierChanceEntry)
                 numberRow("Outlier size (mg/dL)", text: $viewModel.outlierSizeEntry)
                 numberRow("Failed reading chance (%)", text: $viewModel.failedReadingChanceEntry)
-                numberRow("Seed", text: $viewModel.effectsSeedEntry)
+                numberRow("Seed", text: $viewModel.effectsSeedEntry, keyboardType: .numberPad, maxLength: 12)
                 Button("Apply Effects", action: viewModel.applyTraceEffects)
                 if let message = viewModel.traceEffectsMessage {
                     MessageView(message: message)
@@ -167,7 +184,7 @@ struct CGMServerView: View {
         }
     }
 
-    private func numberRow(_ label: String, text: Binding<String>) -> some View {
+    private func numberRow(_ label: String, text: Binding<String>, keyboardType: UIKeyboardType = .decimalPad, maxLength: Int = 7) -> some View {
         HStack {
             Text(label)
             Spacer()
@@ -177,9 +194,9 @@ struct CGMServerView: View {
                 font: .preferredFont(forTextStyle: .headline),
                 textColor: .blue,
                 textAlignment: .right,
-                keyboardType: .decimalPad,
+                keyboardType: keyboardType,
                 shouldBecomeFirstResponder: false,
-                maxLength: 7,
+                maxLength: maxLength,
                 doneButtonColor: UIColor(Color.accentColor),
                 textFieldDidBeginEditing: nil
             )
@@ -199,9 +216,9 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
             RoundedCardValueRow(label: "Session Run Time", value: viewModel.sessionRunTimeString)
-            // HYD-C-015/016: the clock the collector sees is the host clock plus the tester's offset.
+            // HYD-C-015/016: the clock the next Session Start Time is written in (host clock plus the skew).
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                RoundedCardValueRow(label: "Device Clock", value: deviceClockText(now: context.date))
+                RoundedCardValueRow(label: "Sensor Clock", value: deviceClockText(now: context.date))
             }
             Divider()
             HStack {
@@ -210,12 +227,9 @@ struct CGMServerView: View {
                 runTimeEntry
                 Button("Apply", action: viewModel.applySessionRunTime)
             }
-            HStack {
-                Text("Clock Offset (minutes)")
-                Spacer()
-                clockOffsetEntry
-                Button("Apply", action: viewModel.applyClockOffset)
-            }
+            // Minutes, negative allowed, so the keyboard needs a minus sign.
+            numberRow("Clock Skew (minutes, next session)", text: $viewModel.clockOffsetMinutesEntry, keyboardType: .numbersAndPunctuation)
+            Button("Apply Skew", action: viewModel.applyClockOffset)
             if let message = viewModel.clockOffsetMessage {
                 MessageView(message: message)
             }
@@ -271,28 +285,14 @@ struct CGMServerView: View {
         }
     }
 
-    /// Device time with the offset applied, and how far it sits from the host clock.
+    /// Sensor time with the skew applied, and how far it sits from the host clock. A skew of a day or more
+    /// would read as the same wall-clock time, so the date is shown then.
     private func deviceClockText(now: Date) -> String {
-        let device = now.addingTimeInterval(viewModel.clockOffset).formatted(date: .omitted, time: .standard)
+        let crossesDays = abs(viewModel.clockOffset) >= 24 * 60 * 60
+        let device = now.addingTimeInterval(viewModel.clockOffset).formatted(date: crossesDays ? .abbreviated : .omitted, time: .standard)
         guard viewModel.clockOffset != 0 else { return device }
         let minutes = viewModel.clockOffset / 60
         return "\(device) (\(minutes > 0 ? "+" : "")\(minutes.compactDescription) min)"
-    }
-
-    /// Minutes, negative allowed, so the keyboard needs a minus sign.
-    private var clockOffsetEntry: some View {
-        DismissibleKeyboardTextField(
-            text: $viewModel.clockOffsetMinutesEntry,
-            placeholder: "minutes",
-            font: .preferredFont(forTextStyle: .headline),
-            textColor: .blue,
-            textAlignment: .right,
-            keyboardType: .numbersAndPunctuation,
-            shouldBecomeFirstResponder: false,
-            maxLength: 7,
-            doneButtonColor: UIColor(Color.accentColor),
-            textFieldDidBeginEditing: nil
-        )
     }
 
     private var runTimeEntry: some View {
@@ -358,9 +358,12 @@ struct CGMServerView: View {
     }
 
     private var errorHandlingCard: some View {
-        RoundedCard(title: "Error Handling") {
+        RoundedCard(title: "Error Handling", footer: "Next Payload Fault corrupts one message and then clears: Omit CRC drops the E2E-CRC trailer, Corrupt CRC flips a bit in it, Truncate cuts the payload short. It applies to the next read response, notification or indication of a CGMS characteristic while the Feature keeps advertising E2E-CRC, so the collector's integrity-failure handling runs instead of a re-read of the Feature. The CRC faults wait for a payload that carries a CRC (RACP has none) and are no-ops with E2E-CRC off.") {
             RoundedCardToggleRow(label: "Procedure Already In Progress", enabled: $viewModel.procedureAlreadyInProgress, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Out of Range Schedule", enabled: $viewModel.outOfRangeSchedule, toggleTintColor: .accentColor)
+            Divider()
+            LabeledSegmentedPicker("Next Payload Fault", selection: $viewModel.integrityFault)
+            RoundedCardValueRow(label: "Last Injected", value: viewModel.lastInjectedFaultString)
         }
     }
 }

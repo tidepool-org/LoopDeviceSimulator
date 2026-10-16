@@ -118,6 +118,8 @@ class AuthorizationControlClientViewModel: ObservableObject {
     // MARK: - Peripheral Connection
 
     func startClient() {
+        SessionLog.shared.context = SessionLog.Context(mode: .acs, role: .client)
+        SessionLog.shared.log(.lifecycle, "authorization control client started")
         authorizationControlController = AuthorizationControlController()
         authorizationControlController?.delegate = self
         if let ecdhKeyID = authorizationControlController?.securityManager.configuration.ecdhKeyID {
@@ -130,6 +132,8 @@ class AuthorizationControlClientViewModel: ObservableObject {
     }
 
     func stopClient() {
+        SessionLog.shared.log(.lifecycle, "authorization control client stopped")
+        SessionLog.shared.context = SessionLog.Context()
         disconnect()
         reset()
         authorizationControlController?.centralManager?.stopScan()
@@ -203,9 +207,11 @@ extension AuthorizationControlClientViewModel: AuthorizationControlControllerDel
 
     func connectedToPeripheral(sender: AuthorizationControlController) {
         isPeripheralConnected = true
+        SessionLog.shared.log(.connection, "connected to peripheral")
     }
 
     func didDisconnectFromPeripheral(sender: AuthorizationControlController) {
+        SessionLog.shared.log(.connection, "disconnected from peripheral")
         connectedMessage = "Currently disconnected"
         displayMessageInConsole(message: "\(#function) wait for the user to switch back to peripheral view")
     }

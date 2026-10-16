@@ -279,11 +279,15 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     // MARK: - Peripheral Connection
 
     func startClient() {
+        SessionLog.shared.context = SessionLog.Context(mode: .pump, role: .client)
+        SessionLog.shared.log(.lifecycle, "insulin delivery client started")
         insulinDeliveryController = InsulinDeliveryController()
         insulinDeliveryController?.delegate = self
     }
 
     func stopClient() {
+        SessionLog.shared.log(.lifecycle, "insulin delivery client stopped")
+        SessionLog.shared.context = SessionLog.Context()
         disconnect()
         reset()
         insulinDeliveryController?.centralManager?.stopScan()
@@ -407,9 +411,11 @@ extension InsulinDeliveryClientViewModel: InsulinDeliveryControllerDelegate {
 
     func connectedToPeripheral(sender: InsulinDeliveryController) {
         isPeripheralConnected = true
+        SessionLog.shared.log(.connection, "connected to pump")
     }
 
     func didDisconnectFromPeripheral(sender: InsulinDeliveryController) {
+        SessionLog.shared.log(.connection, "disconnected from pump")
         connectedMessage = "Currently disconnected"
         displayMessageInConsole(message: "\(#function) wait for the user to switch back to peripheral view")
     }

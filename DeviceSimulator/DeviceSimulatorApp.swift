@@ -25,6 +25,11 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
         serverName.trimmingCharacters(in: .whitespaces)
     }
 
+    init() {
+        // The log captures the kits' console from the first message; it must exist before any server starts.
+        _ = SessionLog.shared
+    }
+
     var body: some Scene {
         WindowGroup {
             NavigationView {
@@ -53,6 +58,12 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
                         }
                         NavigationLink(destination: authorizationControlClientView) {
                             Text("Authorization Control Client")
+                        }
+                    }
+
+                    Section(header: Text("Diagnostics"), footer: Text("Every Bluetooth transaction, tester action and lifecycle event from both modes, kept across relaunches and exportable as JSONL.")) {
+                        NavigationLink(destination: SessionLogView()) {
+                            Text("Session Log")
                         }
                     }
                 }

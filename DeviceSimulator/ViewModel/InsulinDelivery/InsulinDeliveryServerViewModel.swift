@@ -20,17 +20,25 @@ class InsulinDeliveryServerViewModel {
     var consoleMessages: String = ""
     var isServerBusy = false {
         didSet {
+            if oldValue != isServerBusy { SessionLog.shared.stimulus("Server Busy → \(isServerBusy ? "on" : "off")") }
             if mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy != isServerBusy {
                 mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy = isServerBusy
             }
         }
     }
-    var procedureAlreadyInProgress = false
-    var outOfRangeSchedule = false
+    var procedureAlreadyInProgress = false {
+        didSet { if oldValue != procedureAlreadyInProgress { SessionLog.shared.stimulus("Procedure Already In Progress → \(procedureAlreadyInProgress ? "on" : "off")") } }
+    }
+    var outOfRangeSchedule = false {
+        didSet { if oldValue != outOfRangeSchedule { SessionLog.shared.stimulus("Out of Range Schedule → \(outOfRangeSchedule ? "on" : "off")") } }
+    }
     var numberOfSubscribedDevices: Int = 0
-    var readyToDisconnect = false
+    var readyToDisconnect = false {
+        didSet { if oldValue != readyToDisconnect { SessionLog.shared.stimulus("Ready to Disconnect → \(readyToDisconnect ? "on" : "off")") } }
+    }
     var isPumpPoweredOn = true {
         didSet {
+            SessionLog.shared.stimulus("Power On Pump → \(isPumpPoweredOn ? "on" : "off")")
             if isPumpPoweredOn {
                 startServer()
             } else {
@@ -40,11 +48,14 @@ class InsulinDeliveryServerViewModel {
     }
     var isPumpBehaviourEnabled = false {
         didSet {
+            // Also mirrored from the pump on every update; only a real change is a stimulus.
+            if oldValue != isPumpBehaviourEnabled { SessionLog.shared.stimulus("Pump behaviour → \(isPumpBehaviourEnabled ? "on" : "off")") }
             mockInsulinDeliveryPump?.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         }
     }
     var isAuthorizationControlEnabled = false {
         didSet {
+            if oldValue != isAuthorizationControlEnabled { SessionLog.shared.stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")") }
             mockInsulinDeliveryPump?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
@@ -80,9 +91,13 @@ class InsulinDeliveryServerViewModel {
         mockInsulinDeliveryPump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
         mockInsulinDeliveryPump?.delegate = self
         mockPumpDidUpdate(mockInsulinDeliveryPump!)
+        SessionLog.shared.context = SessionLog.Context(mode: .pump, role: .server, scenario: "mock pump", scenarioVersion: nil)
+        SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName)")
     }
 
     func stopServer() {
+        if mockInsulinDeliveryPump != nil { SessionLog.shared.log(.lifecycle, "pump server stopped") }
+        SessionLog.shared.context = SessionLog.Context()
         server?.disconnect()
         server = nil
         mockInsulinDeliveryPump = nil
@@ -95,6 +110,7 @@ class InsulinDeliveryServerViewModel {
     }
 
     func restartServer() {
+        SessionLog.shared.stimulus("Restart Server")
         stopServer()
         startServer()
         consoleMessages.append("server restarted")
@@ -120,10 +136,12 @@ extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
 extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
+        SessionLog.shared.log(.connection, "central subscribed to \(characteristicUUID.uuidString) (\(numberOfSubscribedDevices) subscribed)")
     }
 
     func centralDidUnsubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
+        SessionLog.shared.log(.connection, "central unsubscribed from \(characteristicUUID.uuidString) (\(numberOfSubscribedDevices) subscribed)")
     }
 
     func isProcedureAlreadyInProgress() -> Bool {
@@ -140,6 +158,7 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
+        SessionLog.shared.stimulus("Issue Annunciation: \(annunciationTypeToIssue.description)")
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
     }
 }
@@ -147,6 +166,7 @@ extension InsulinDeliveryServerViewModel {
 // MARK: - Authorization Control
 extension InsulinDeliveryServerViewModel {
     func sendSecureIndication() {
+        SessionLog.shared.stimulus("Send secure indication")
         let message = "This is a secure indication".data(using: .utf8)!
         mockInsulinDeliveryPump?.sendSecureIndication(message, to: 1)
     }
@@ -160,6 +180,7 @@ extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
             mockInsulinDeliveryPump?.featureCharacteristic.flags.contains(.supportedE2EProtection) ?? false
         }
         set {
+            SessionLog.shared.stimulus("E2E Protection Supported → \(newValue ? "on" : "off")")
             if newValue {
                 mockInsulinDeliveryPump?.featureCharacteristic.flags.insert(.supportedE2EProtection)
             } else {

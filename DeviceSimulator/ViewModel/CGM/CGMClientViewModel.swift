@@ -174,6 +174,8 @@ class CGMClientViewModel: ObservableObject {
     // MARK: - Peripheral connection
 
     func startClient() {
+        SessionLog.shared.context = SessionLog.Context(mode: .cgm, role: .client)
+        SessionLog.shared.log(.lifecycle, "CGM collector client started")
         collector = CGMCollectorController()
         collector?.delegate = self
         collector?.onMeasurement = { [weak self] records in
@@ -224,6 +226,8 @@ class CGMClientViewModel: ObservableObject {
     /// Tears the controller down so no callback can restart scanning after the view is gone; `startClient`
     /// builds a fresh one on the next appearance.
     func stopClient() {
+        SessionLog.shared.log(.lifecycle, "CGM collector client stopped")
+        SessionLog.shared.context = SessionLog.Context()
         collector?.stop()
         collector = nil
         reset()
@@ -542,9 +546,11 @@ extension CGMClientViewModel: PeripheralControllerDelegate {
 
     func connectedToPeripheral(sender: PeripheralController) {
         isPeripheralConnected = true
+        SessionLog.shared.log(.connection, "connected to sensor")
     }
 
     func didDisconnectFromPeripheral(sender: PeripheralController) {
+        SessionLog.shared.log(.connection, "disconnected from sensor")
         connectedMessage = "Currently disconnected"
         deviceList.removeAll()
         resetSubscriptions()
