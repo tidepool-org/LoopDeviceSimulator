@@ -135,6 +135,31 @@ enum GlucoseSourceOption: Hashable, CustomStringConvertible {
     }
 }
 
+/// One-shot corruption of the next CGMS payload (HYD-C-009); `none` once the sensor has used it.
+enum IntegrityFaultOption: CaseIterable, Hashable, CustomStringConvertible {
+    case none, omitCRC, corruptCRC, truncate
+
+    init(fault: CGMIntegrityFault?) {
+        switch fault {
+        case nil: self = .none
+        case .omitCRC: self = .omitCRC
+        case .corruptCRC: self = .corruptCRC
+        case .truncate: self = .truncate
+        }
+    }
+
+    var fault: CGMIntegrityFault? {
+        switch self {
+        case .none: return nil
+        case .omitCRC: return .omitCRC
+        case .corruptCRC: return .corruptCRC
+        case .truncate: return .truncate
+        }
+    }
+
+    var description: String { fault?.description ?? "None" }
+}
+
 @Observable
 class CGMServerViewModel {
 
@@ -142,12 +167,30 @@ class CGMServerViewModel {
     @ObservationIgnored private var sensor: MockCGMSensor?
 
     var numberOfSubscribedDevices: Int = 0
-    var procedureAlreadyInProgress = false
-    var outOfRangeSchedule = false
+    var procedureAlreadyInProgress = false {
+        didSet { if oldValue != procedureAlreadyInProgress { stimulus("Procedure Already In Progress → \(procedureAlreadyInProgress ? "on" : "off")") } }
+    }
+    var outOfRangeSchedule = false {
+        didSet { if oldValue != outOfRangeSchedule { stimulus("Out of Range Schedule → \(outOfRangeSchedule ? "on" : "off")") } }
+    }
+    /// Armed here, consumed by the sensor's next CGMS payload; the mirror drops back to `none` with it.
+    var integrityFault: IntegrityFaultOption = .none {
+        didSet {
+            guard oldValue != integrityFault else { return }
+            if integrityFault != .none { stimulus("Next Payload Fault armed: \(integrityFault)") }
+            if let sensor {
+                sensor.pendingIntegrityFault = integrityFault.fault
+            } else {
+                preservedIntegrityFault = integrityFault.fault   // armed while powered off: the next start carries it
+            }
+        }
+    }
+    var lastInjectedFaultString: String = "none"
 
     var isSensorPoweredOn = true {
         didSet {
             guard oldValue != isSensorPoweredOn else { return }
+            stimulus("Power On Sensor → \(isSensorPoweredOn ? "on" : "off")")
             if isSensorPoweredOn {
                 startServer()
             } else {
@@ -160,8 +203,9 @@ class CGMServerViewModel {
     /// a bond is not needed for testing, and ACS will provide the application-layer channel.
     var requiresEncryption = false {
         didSet {
-            guard oldValue != requiresEncryption, server != nil else { return }
-            restartServer()
+            guard oldValue != requiresEncryption else { return }
+            stimulus("Require Encrypted Link → \(requiresEncryption ? "on" : "off")")
+            if server != nil { restart() }
         }
     }
 
@@ -170,6 +214,7 @@ class CGMServerViewModel {
     var isAuthorizationControlEnabled = false {
         didSet {
             guard oldValue != isAuthorizationControlEnabled else { return }
+            stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")")
             sensor?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
@@ -179,8 +224,18 @@ class CGMServerViewModel {
     var measurementInterval: MeasurementIntervalOption = .fiveMinutes {
         didSet {
             guard oldValue != measurementInterval else { return }
+            stimulus("Communication Interval → \(measurementInterval)")
             applyMeasurementInterval(to: sensor)
         }
+    }
+
+    /// True while the sensor's state is being mirrored into these properties (delegate updates, stop), so the
+    /// didSet handlers do not log a collector's write or a teardown reset as something the tester did.
+    @ObservationIgnored private var isMirroring = false
+
+    private func stimulus(_ detail: String) {
+        guard !isMirroring else { return }
+        SessionLog.shared.stimulus(detail)
     }
 
     // Record database (CGMS §3.6): what the collector can backfill through RACP.
@@ -272,6 +327,20 @@ class CGMServerViewModel {
     var sinePeriodMinutesEntry: String = "360"
     var constantEntry: String = "120"
     var glucoseSourceMessage: String? = nil
+
+    // Trace effects (CGM-DESIGN §Glucose trace, HYD-C-018): entries are text, applied with Apply Effects.
+    var traceEffects: CGMTraceEffects = .none
+    var noiseEntry: String = "0"
+    var outlierChanceEntry: String = "0"
+    var outlierSizeEntry: String = "60"
+    var failedReadingChanceEntry: String = "0"
+    var effectsSeedEntry: String = "1"
+    var traceEffectsMessage: String? = nil
+
+    // Sensor clock skew (HYD-C-015/016): Session Start Time is written as host clock plus this, in minutes on screen.
+    var clockOffset: TimeInterval = 0
+    var clockOffsetMinutesEntry: String = "0"
+    var clockOffsetMessage: String? = nil
     let scenarios: [CGMGlucoseScenario] = CGMScenarioLibrary.bundled
 
     var glucoseSourceOptions: [GlucoseSourceOption] {
@@ -291,6 +360,9 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
     @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
     @ObservationIgnored private var preservedSensorRange: ClosedRange<Double> = 40...400
+    @ObservationIgnored private var preservedTraceEffects: CGMTraceEffects = .none
+    @ObservationIgnored private var preservedClockOffset: TimeInterval = 0
+    @ObservationIgnored private var preservedIntegrityFault: CGMIntegrityFault? = nil
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -299,6 +371,9 @@ class CGMServerViewModel {
         if server != nil {
             stopServer()
         }
+        // Before the GATT server exists, so its first console lines already carry the mode; the glucose
+        // source is filled in once the sensor is built.
+        SessionLog.shared.context = SessionLog.Context(mode: .cgm, role: .server)
         // nil keeps the current name (restart); an empty string falls back to the CGM default.
         if let serverName {
             self.serverName = serverName.isEmpty ? nil : serverName
@@ -329,12 +404,20 @@ class CGMServerViewModel {
         sensor.calibrationSchedule = calibrationSchedule.schedule
         sensor.warmupDuration = warmupDuration.rawValue
         sensor.sensorRange = preservedSensorRange
+        sensor.traceEffects = preservedTraceEffects
+        sensor.clockOffset = preservedClockOffset
+        sensor.pendingIntegrityFault = preservedIntegrityFault   // a fault armed while powered off or across a restart
+        preservedIntegrityFault = nil
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
         sessionRunTimeHoursEntry = String(sensor.sessionRunTime.hours)
         syncGlucoseSourceEntries(from: sensor.trace)
         syncSensorRangeEntries(from: sensor)
+        syncTraceEffectsEntries(from: sensor.traceEffects)
+        syncClockOffsetEntry(from: sensor.clockOffset)
+        SessionLog.shared.context = logContext(for: sensor)
+        SessionLog.shared.log(.lifecycle, "CGM server started, advertising \(self.serverName ?? CGMConstants.serverName)")
 
         // Time Offset is clock-derived, so refresh the display once a minute. Common modes keep it ticking
         // while the tester scrolls.
@@ -347,9 +430,17 @@ class CGMServerViewModel {
     }
 
     func stopServer() {
+        // Resets below are teardown, not tester actions; the context stays until the last kit line is out.
+        isMirroring = true
+        defer {
+            isMirroring = false
+            SessionLog.shared.context = SessionLog.Context()
+        }
         refreshTimer?.invalidate()
         refreshTimer = nil
         if let sensor {
+            SessionLog.shared.log(.lifecycle, "CGM server stopped")
+            preservedIntegrityFault = sensor.pendingIntegrityFault
             preservedFeature = sensor.feature
             preservedManualStatus = sensor.manualSensorStatus
             preservedRunTime = sensor.sessionRunTime
@@ -357,6 +448,8 @@ class CGMServerViewModel {
             preservedRecordCapacity = sensor.recordStore.capacity
             preservedAlertLevels = sensor.alertLevels
             preservedSensorRange = sensor.sensorRange
+            preservedTraceEffects = sensor.traceEffects
+            preservedClockOffset = sensor.clockOffset
         }
         server?.disconnect()
         server = nil
@@ -390,15 +483,33 @@ class CGMServerViewModel {
         calibrationStatusString = "none"
     }
 
+    /// Mode, role and the glucose source the log stamps on every line while this server runs (HYD-O-003).
+    private func logContext(for sensor: MockCGMSensor) -> SessionLog.Context {
+        let scenario: String
+        switch sensor.trace {
+        case .scenario(let traceScenario):
+            scenario = traceScenario.name
+        case .constant(let mgdl):
+            scenario = "Constant \(mgdl.compactDescription) mg/dL"
+        case let .sineCurve(base, amplitude, period):
+            scenario = "Sine \(base.compactDescription) ± \(amplitude.compactDescription) mg/dL over \((period / 60).compactDescription) min"
+        }
+        let effects = sensor.traceEffects
+        return SessionLog.Context(mode: .cgm, role: .server, scenario: scenario,
+                                  scenarioVersion: effects.isActive ? "effects seed \(effects.seed)" : nil)
+    }
+
     // MARK: - CGM Specific Ops
 
     /// Forgets the stored calibrations so a Get answers the record 0 placeholder again.
     func clearCalibrations() {
+        stimulus("Clear Calibrations")
         sensor?.calibrationStore.removeAll()
     }
 
     /// Puts the alert levels back to the sensor defaults, e.g. after a tester drove them somewhere odd.
     func resetAlertLevels() {
+        stimulus("Reset Alert Levels")
         if let sensor {
             sensor.alertLevels = CGMAlertLevels()
         } else {
@@ -443,11 +554,13 @@ class CGMServerViewModel {
         }
         sensor.recordStore.capacity = capacity
         recordSettingsMessage = nil
+        stimulus("Record capacity → \(capacity)")
         mockSensorDidUpdate(sensor)
     }
 
     /// Empties the database without touching the session, so a tester can re-run a backfill from scratch.
     func clearRecords() {
+        stimulus("Clear Records")
         sensor?.recordStore.removeAll()
     }
 
@@ -459,6 +572,7 @@ class CGMServerViewModel {
             return
         }
         let added = sensor.backfill(duration: backfillDuration.rawValue)
+        stimulus("Backfill \(backfillDuration): \(added) records added")
         recordSettingsMessage = added > 0
             ? "Added \(added) records covering the last \(backfillDuration); time offset is now \(sensor.timeOffset) min"
             : "Nothing added: the measurement interval is longer than \(backfillDuration)"
@@ -467,6 +581,12 @@ class CGMServerViewModel {
 
     /// Recreates the server only when the sensor is meant to be on; otherwise the radio stays silent.
     func restartServer() {
+        stimulus("Restart Server")
+        restart()
+    }
+
+    /// Recreates the server only when the sensor is meant to be on; otherwise the radio stays silent.
+    private func restart() {
         stopServer()
         if isSensorPoweredOn {
             startServer()
@@ -476,24 +596,29 @@ class CGMServerViewModel {
     // MARK: - Session and measurements
 
     func startSession() {
+        stimulus("Start Session")
         sensor?.startSession()
     }
 
     func stopSession() {
+        stimulus("Stop Session")
         sensor?.stopSession()
     }
 
     func takeMeasurement() {
+        stimulus("Measure Now")
         sensor?.takeMeasurement()
     }
 
     // MARK: - Lifecycle
 
     func replaceSensor() {
+        stimulus("Replace Sensor")
         sensor?.replaceSensor()
     }
 
     func failSensor() {
+        stimulus("Fail Sensor")
         sensor?.failSensor()
     }
 
@@ -501,8 +626,10 @@ class CGMServerViewModel {
     func toggleTemporaryIssue() {
         guard let sensor else { return }
         if sensor.condition == .impaired {
+            stimulus("Resolve Issue")
             sensor.resolveTemporaryIssue()
         } else {
+            stimulus("Temporary Issue")
             sensor.beginTemporaryIssue()
         }
     }
@@ -514,6 +641,7 @@ class CGMServerViewModel {
             return
         }
         lifecycleMessage = nil
+        stimulus("Sensor range → \(low.compactDescription)…\(high.compactDescription) mg/dL")
         if let sensor {
             sensor.sensorRange = low...high
         } else {
@@ -527,6 +655,77 @@ class CGMServerViewModel {
         sensorRangeHighEntry = sensor.sensorRange.upperBound.compactDescription
     }
 
+    // MARK: - Trace effects
+
+    /// Applies the effect entries (percentages on screen, probabilities on the sensor); a bad entry is reported.
+    func applyTraceEffects() {
+        guard let noise = noiseEntry.parsedDouble, let outlierPercent = outlierChanceEntry.parsedDouble,
+              let outlierSize = outlierSizeEntry.parsedDouble, let failedPercent = failedReadingChanceEntry.parsedDouble,
+              let seed = UInt64(effectsSeedEntry.trimmingCharacters(in: .whitespaces)),
+              noise.isFinite, noise >= 0, outlierSize.isFinite, outlierSize >= 0,
+              (0...100).contains(outlierPercent), (0...100).contains(failedPercent)
+        else {
+            traceEffectsMessage = "Effects need noise ≥ 0, chances 0–100 %, outlier size ≥ 0 and a whole-number seed"
+            return
+        }
+        traceEffectsMessage = nil
+        let effects = CGMTraceEffects(noiseStandardDeviation: noise, outlierProbability: outlierPercent / 100, outlierMagnitude: outlierSize, errorProbability: failedPercent / 100, seed: seed)
+        stimulus("Apply Effects: noise σ \(Self.format(noise)), outliers \(Self.format(outlierPercent)) % ±\(Self.format(outlierSize)), failed readings \(Self.format(failedPercent)) %, seed \(seed)")
+        if let sensor {
+            sensor.traceEffects = effects
+        } else {
+            preservedTraceEffects = effects
+            traceEffects = effects   // the summary row shows what the next start will apply
+        }
+    }
+
+    private func syncTraceEffectsEntries(from effects: CGMTraceEffects) {
+        noiseEntry = Self.format(effects.noiseStandardDeviation)
+        outlierChanceEntry = Self.percent(effects.outlierProbability)
+        outlierSizeEntry = Self.format(effects.outlierMagnitude)
+        failedReadingChanceEntry = Self.percent(effects.errorProbability)
+        effectsSeedEntry = String(effects.seed)
+        traceEffectsMessage = nil
+    }
+
+    /// A probability as a percentage with at most one decimal, so 0.07 reads "7" and not "7.000000000000001".
+    private static func percent(_ probability: Double) -> String {
+        format((probability * 1000).rounded() / 10)
+    }
+
+    /// One line for the Glucose Source card: what the sensor is applying right now.
+    var traceEffectsSummary: String {
+        guard traceEffects.isActive else { return "off" }
+        var parts: [String] = []
+        if traceEffects.noiseStandardDeviation > 0 { parts.append("noise σ \(Self.format(traceEffects.noiseStandardDeviation))") }
+        if traceEffects.outlierProbability > 0 { parts.append("outliers \(Self.percent(traceEffects.outlierProbability)) % ±\(Self.format(traceEffects.outlierMagnitude))") }
+        if traceEffects.errorProbability > 0 { parts.append("failed readings \(Self.percent(traceEffects.errorProbability)) %") }
+        return parts.joined(separator: ", ") + ", seed \(traceEffects.seed)"
+    }
+
+    // MARK: - Device clock
+
+    /// Applies the clock skew entry in minutes (negative allowed); the sensor uses it at the next Start Session.
+    func applyClockOffset() {
+        guard let minutes = clockOffsetMinutesEntry.parsedDouble, minutes.isFinite, abs(minutes) <= 7 * 24 * 60 else {
+            clockOffsetMessage = "Clock offset needs a number of minutes within ±7 days"
+            return
+        }
+        clockOffsetMessage = nil
+        stimulus("Clock Skew → \(Self.format(minutes)) min (next session)")
+        if let sensor {
+            sensor.clockOffset = minutes * 60
+        } else {
+            preservedClockOffset = minutes * 60
+            clockOffset = minutes * 60
+        }
+    }
+
+    private func syncClockOffsetEntry(from offset: TimeInterval) {
+        clockOffsetMinutesEntry = Self.format(offset / 60)
+        clockOffsetMessage = nil
+    }
+
     func applySessionRunTime() {
         guard let sensor else { return }
         guard let hours = UInt16(sessionRunTimeHoursEntry) else {
@@ -534,6 +733,7 @@ class CGMServerViewModel {
             return
         }
         sensor.sessionRunTime = CGMSessionRunTime(hours: hours)
+        stimulus("Session Run Time → \(hours) h")
     }
 
     // MARK: - Glucose source
@@ -565,6 +765,7 @@ class CGMServerViewModel {
             sensor.trace = .scenario(scenario)
         }
         glucoseSourceMessage = nil
+        stimulus("Glucose Source → \(glucoseSource)")
     }
 
     /// Scenario details for the selected scenario, shown under the picker.
@@ -606,6 +807,7 @@ class CGMServerViewModel {
 
     /// While the sensor is powered off the toggles edit the preserved value, which the next start applies.
     func setFeature(_ flag: CGMFeatureFlags, enabled: Bool) {
+        stimulus("Feature \(CGMFeatureFlags.named.first { $0.flag == flag }?.name ?? "\(flag.rawValue)") → \(enabled ? "on" : "off")")
         if let sensor {
             if enabled {
                 sensor.feature.flags.insert(flag)
@@ -627,6 +829,7 @@ class CGMServerViewModel {
     }
 
     func setStatusBit(_ bit: CGMSensorStatusAnnunciation, enabled: Bool) {
+        stimulus("Status bit \(CGMSensorStatusAnnunciation.named.first { $0.flag == bit }?.name ?? "\(bit.rawValue)") → \(enabled ? "on" : "off")")
         if let sensor {
             if enabled {
                 sensor.manualSensorStatus.insert(bit)
@@ -654,10 +857,12 @@ class CGMServerViewModel {
 extension CGMServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
+        SessionLog.shared.log(.connection, "central subscribed to \(characteristicUUID.uuidString) (\(numberOfSubscribedDevices) subscribed)")
     }
 
     func centralDidUnsubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
+        SessionLog.shared.log(.connection, "central unsubscribed from \(characteristicUUID.uuidString) (\(numberOfSubscribedDevices) subscribed)")
     }
 
     func isProcedureAlreadyInProgress() -> Bool {
@@ -673,12 +878,22 @@ extension CGMServerViewModel: GATTServiceDelegate {
 
 extension CGMServerViewModel: MockCGMSensorDelegate {
     func mockSensorDidUpdate(_ sensor: MockCGMSensor) {
+        isMirroring = true
+        defer { isMirroring = false }
+        let context = logContext(for: sensor)
+        if SessionLog.shared.context != context { SessionLog.shared.context = context }
         sessionStateString = sensor.isWarmingUp ? "running (warming up)" : String(describing: sensor.sessionState)
         warmupEndDate = sensor.warmupEndDate
         if let option = WarmupDurationOption(rawValue: sensor.warmupDuration) {
             warmupDuration = option
         }
         condition = sensor.condition
+        traceEffects = sensor.traceEffects
+        clockOffset = sensor.clockOffset
+        integrityFault = IntegrityFaultOption(fault: sensor.pendingIntegrityFault)
+        lastInjectedFaultString = sensor.lastInjectedFault.map { injected in
+            "\(injected.fault) on \(injected.characteristic.name) at \(injected.date.formatted(date: .omitted, time: .standard))\(injected.applied ? "" : " (no CRC to corrupt, sent intact)")"
+        } ?? "none"
         lifecycleEventStrings = sensor.lifecycleEvents.suffix(20).reversed().map { String(describing: $0) }
         if let startTime = sensor.sessionStartTime {
             sessionStartTimeString = "\(startTime)\(sensor.sessionStartTimeSetByCollector ? " (written by collector)" : "")"

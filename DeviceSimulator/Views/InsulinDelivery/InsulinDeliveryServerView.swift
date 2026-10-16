@@ -15,8 +15,26 @@ struct InsulinDeliveryServerView: View {
     /// Advertised local name, from the root list's Server Name field.
     var serverName: String? = nil
 
+    /// A sheet rather than a push: pushing would make this view disappear and stop the server.
+    @State private var isShowingLog = false
+
     var body: some View {
         insulinDeliveryServer
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isShowingLog = true
+                    } label: {
+                        Image(systemName: "list.bullet.rectangle")
+                    }
+                    .accessibilityLabel("Session Log")
+                }
+            }
+            .sheet(isPresented: $isShowingLog) {
+                NavigationStack {
+                    SessionLogView()
+                }
+            }
             .onAppear(perform: { viewModel.startServer(serverName: serverName) })
             .onDisappear(perform: { viewModel.stopServer() })
     }
