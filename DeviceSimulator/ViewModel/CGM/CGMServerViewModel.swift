@@ -60,6 +60,32 @@ enum RecordsPerNotificationOption: Int, CaseIterable, Hashable, CustomStringConv
     var description: String { String(rawValue) }
 }
 
+/// One point of the HUD sparkline: a stored reading by Time Offset. NaN glucose (impaired sensor) is skipped by the chart.
+struct CGMReadingPoint: Identifiable, Hashable {
+    /// Position in the record store. Time Offset has one-minute resolution, so at the 5 s cadence a dozen
+    /// readings share one offset and it cannot serve as the identity.
+    let id: Int
+    let timeOffset: Int
+    let glucose: Double
+}
+
+/// Warm-up after Start Session before readings begin (TBD-03: default 1 min, adjustable while in progress).
+enum WarmupDurationOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
+    case off = 0
+    case oneMinute = 60
+    case fiveMinutes = 300
+    case twoHours = 7200
+
+    var description: String {
+        switch self {
+        case .off: return "Off"
+        case .oneMinute: return "1 min"
+        case .fiveMinutes: return "5 min"
+        case .twoHours: return "2 h"
+        }
+    }
+}
+
 /// How often the sensor asks the collector for a calibration (CGMS §3.7.2.2 Next Calibration Time).
 enum CalibrationScheduleOption: CaseIterable, Hashable, CustomStringConvertible {
     case never
@@ -187,6 +213,36 @@ class CGMServerViewModel {
     var calibrationStatusString: String = "none"
     var specificOpsMessage: String? = nil
 
+    // Lifecycle (CGM-DESIGN §Lifecycle)
+    /// Applies at once, including mid warm-up; while powered off the next start picks it up.
+    var warmupDuration: WarmupDurationOption = .oneMinute {
+        didSet {
+            guard oldValue != warmupDuration else { return }
+            sensor?.warmupDuration = warmupDuration.rawValue
+        }
+    }
+    var warmupEndDate: Date?
+    /// The sensor's physical condition; nil while powered off. The strings and flags below derive from it.
+    var condition: CGMSensorCondition? = nil
+    var conditionString: String { condition.map { String(describing: $0) } ?? "" }
+    var isImpaired: Bool { condition == .impaired }
+    var isFailed: Bool { condition == .failed }
+    var sensorRangeLowEntry: String = "40"
+    var sensorRangeHighEntry: String = "400"
+    var lifecycleMessage: String? = nil
+    /// Newest first, for the Lifecycle card.
+    var lifecycleEventStrings: [String] = []
+
+    // HUD page (CGMSensorHUDView): the latest reading in numbers, the recent trace, and the status bits by name.
+    var lastGlucose: Double? = nil
+    var lastTrend: Double? = nil
+    var isSessionRunning = false
+    var timeOffsetMinutes = 0
+    /// Stored readings from the last hour of session time, for the HUD chart's fixed 60 min window.
+    var recentReadings: [CGMReadingPoint] = []
+    static let chartWindowMinutes = 60
+    var activeStatusBitNames: [String] = []
+
     // Mirrors of sensor state for display
     var sessionStateString: String = ""
     var sessionStartTimeString: String = ""
@@ -201,7 +257,10 @@ class CGMServerViewModel {
 
     // Glucose source. Picking a source applies it at once (the checkmark is the active source); the numeric
     // entries are text so the tester can type freely and are applied with the Apply Parameters button.
-    var glucoseSource: GlucoseSourceOption = .sineWave {
+    /// The bundled trace the sensor plays until the tester picks something else (Nate, 2026-10-15).
+    static let defaultScenarioName = "Normal Trace"
+
+    var glucoseSource: GlucoseSourceOption = .scenario(name: CGMServerViewModel.defaultScenarioName) {
         didSet {
             guard oldValue != glucoseSource, !isSyncingGlucoseSource else { return }
             applyGlucoseSource()
@@ -226,9 +285,12 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedFeature: CGMFeature = .simulatorDefault
     @ObservationIgnored private var preservedManualStatus: CGMSensorStatusAnnunciation = []
     @ObservationIgnored private var preservedRunTime = CGMSessionRunTime(hours: 240)
-    @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = .simulatorDefault
+    @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = CGMScenarioLibrary.bundled
+        .first { $0.name == CGMServerViewModel.defaultScenarioName }
+        .map(CGMGlucoseTrace.scenario) ?? .simulatorDefault
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
     @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
+    @ObservationIgnored private var preservedSensorRange: ClosedRange<Double> = 40...400
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -265,11 +327,14 @@ class CGMServerViewModel {
         sensor.recordsPerNotification = recordsPerNotification.rawValue
         sensor.alertLevels = preservedAlertLevels
         sensor.calibrationSchedule = calibrationSchedule.schedule
+        sensor.warmupDuration = warmupDuration.rawValue
+        sensor.sensorRange = preservedSensorRange
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
         sessionRunTimeHoursEntry = String(sensor.sessionRunTime.hours)
         syncGlucoseSourceEntries(from: sensor.trace)
+        syncSensorRangeEntries(from: sensor)
 
         // Time Offset is clock-derived, so refresh the display once a minute. Common modes keep it ticking
         // while the tester scrolls.
@@ -291,6 +356,7 @@ class CGMServerViewModel {
             preservedTrace = sensor.trace
             preservedRecordCapacity = sensor.recordStore.capacity
             preservedAlertLevels = sensor.alertLevels
+            preservedSensorRange = sensor.sensorRange
         }
         server?.disconnect()
         server = nil
@@ -299,11 +365,20 @@ class CGMServerViewModel {
         procedureAlreadyInProgress = false
         outOfRangeSchedule = false
         sessionStateString = ""
+        warmupEndDate = nil
+        condition = nil
+        lifecycleEventStrings = []
         sessionStartTimeString = ""
         timeOffsetString = ""
         sessionRunTimeString = ""
         sensorStatusString = ""
         lastGlucoseString = ""
+        lastGlucose = nil
+        lastTrend = nil
+        isSessionRunning = false
+        timeOffsetMinutes = 0
+        recentReadings = []
+        activeStatusBitNames = []
         measurementCount = 0
         nextMeasurementDate = nil
         isSecurityEstablished = false
@@ -410,6 +485,46 @@ class CGMServerViewModel {
 
     func takeMeasurement() {
         sensor?.takeMeasurement()
+    }
+
+    // MARK: - Lifecycle
+
+    func replaceSensor() {
+        sensor?.replaceSensor()
+    }
+
+    func failSensor() {
+        sensor?.failSensor()
+    }
+
+    /// One button: begins a temporary issue, or resolves the one in progress.
+    func toggleTemporaryIssue() {
+        guard let sensor else { return }
+        if sensor.condition == .impaired {
+            sensor.resolveTemporaryIssue()
+        } else {
+            sensor.beginTemporaryIssue()
+        }
+    }
+
+    /// Applies the sensor range entries (HYD-G-003); a bad entry is reported, not applied.
+    func applySensorRange() {
+        guard let low = sensorRangeLowEntry.parsedDouble, let high = sensorRangeHighEntry.parsedDouble, low.isFinite, high.isFinite, low < high else {
+            lifecycleMessage = "Sensor range needs numeric low < high"
+            return
+        }
+        lifecycleMessage = nil
+        if let sensor {
+            sensor.sensorRange = low...high
+        } else {
+            preservedSensorRange = low...high
+        }
+    }
+
+    /// The entries show the range the sensor is actually using, so unapplied typing does not survive a restart.
+    private func syncSensorRangeEntries(from sensor: MockCGMSensor) {
+        sensorRangeLowEntry = sensor.sensorRange.lowerBound.compactDescription
+        sensorRangeHighEntry = sensor.sensorRange.upperBound.compactDescription
     }
 
     func applySessionRunTime() {
@@ -558,7 +673,13 @@ extension CGMServerViewModel: GATTServiceDelegate {
 
 extension CGMServerViewModel: MockCGMSensorDelegate {
     func mockSensorDidUpdate(_ sensor: MockCGMSensor) {
-        sessionStateString = String(describing: sensor.sessionState)
+        sessionStateString = sensor.isWarmingUp ? "running (warming up)" : String(describing: sensor.sessionState)
+        warmupEndDate = sensor.warmupEndDate
+        if let option = WarmupDurationOption(rawValue: sensor.warmupDuration) {
+            warmupDuration = option
+        }
+        condition = sensor.condition
+        lifecycleEventStrings = sensor.lifecycleEvents.suffix(20).reversed().map { String(describing: $0) }
         if let startTime = sensor.sessionStartTime {
             sessionStartTimeString = "\(startTime)\(sensor.sessionStartTimeSetByCollector ? " (written by collector)" : "")"
         } else {
@@ -568,6 +689,19 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         sessionRunTimeString = String(describing: sensor.sessionRunTime)
         sensorStatusString = String(describing: sensor.sensorStatus)
         lastGlucoseString = sensor.lastMeasurement.map { String(describing: $0) } ?? "no measurement yet"
+        lastGlucose = sensor.lastMeasurement?.glucoseConcentration
+        lastTrend = sensor.lastMeasurement?.trend
+        isSessionRunning = sensor.sessionState == .running
+        timeOffsetMinutes = Int(sensor.timeOffset)
+        // Records are chronological, so the window is a suffix: walk back from the newest and stop at the
+        // first record older than the window rather than scanning the whole store on every update.
+        let windowStart = timeOffsetMinutes - Self.chartWindowMinutes
+        let records = sensor.recordStore.records
+        let windowIndices = records.indices.reversed().prefix { Int(records[$0].timeOffset) >= windowStart }
+        recentReadings = windowIndices.reversed().map { index in
+            CGMReadingPoint(id: index, timeOffset: Int(records[index].timeOffset), glucose: records[index].glucoseConcentration)
+        }
+        activeStatusBitNames = CGMSensorStatusAnnunciation.named.filter { sensor.sensorStatus.contains($0.flag) }.map(\.name)
         measurementCount = sensor.measurementCount
         nextMeasurementDate = sensor.nextMeasurementDate
         featureFlags = sensor.feature.flags

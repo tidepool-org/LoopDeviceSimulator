@@ -15,8 +15,20 @@ struct CGMServerView: View {
     /// Advertised local name, from the root list's Server Name field.
     var serverName: String? = nil
 
+    /// Two pages: the HUD lands first, the full configuration is one swipe to the right (Nate, 2026-10-15).
+    @State private var page = 0
+
     var body: some View {
-        cgmServer
+        TabView(selection: $page) {
+            CGMSensorHUDView(viewModel: viewModel)
+                .tag(0)
+            cgmServer
+                .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .always))
+        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .navigationTitle("CGM Sensor")
+        .navigationBarTitleDisplayMode(.inline)
             .onAppear {
                 if viewModel.isSensorPoweredOn {
                     viewModel.startServer(serverName: serverName)
@@ -27,18 +39,22 @@ struct CGMServerView: View {
 
     private var cgmServer: some View {
         VStack {
-            RoundedCardScrollView(title: "CGM Sensor Server") {
+            // No page title: the navigation bar already says CGM Sensor and the HUD is one swipe left.
+            RoundedCardScrollView {
                 Text("Number of Subscribed Devices: \(viewModel.numberOfSubscribedDevices)")
                 measurementCard
                 recordsCard
                 specificOpsCard
                 glucoseSourceCard
                 sessionCard
+                lifecycleCard
                 serverCard
                 featureCard
                 sensorStatusCard
                 errorHandlingCard
             }
+            // The page control overlays the bottom of the TabView; keep the last card's controls above it.
+            .contentMargins(.bottom, CGMSensorHUDView.pageControlClearance, for: .scrollContent)
         }
     }
 
@@ -48,7 +64,7 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Measurements This Session", value: "\(viewModel.measurementCount)")
             // Ticks once a second; the sensor's timer fire date is the single source of truth.
             TimelineView(.periodic(from: .now, by: 1)) { context in
-                RoundedCardValueRow(label: "Next Measurement", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
+                RoundedCardValueRow(label: "Next Communication", value: countdown(to: viewModel.nextMeasurementDate, now: context.date))
             }
             Divider()
             LabeledSegmentedPicker("Communication Interval", selection: $viewModel.measurementInterval)
@@ -63,9 +79,7 @@ struct CGMServerView: View {
     }
 
     private func countdown(to date: Date?, now: Date) -> String {
-        guard let date else { return "session \(viewModel.sessionStateString)" }
-        let remaining = max(0, Int(date.timeIntervalSince(now).rounded(.up)))
-        return remaining >= 60 ? "in \(remaining / 60) min \(remaining % 60) s" : "in \(remaining) s"
+        date?.countdown(from: now) ?? "session \(viewModel.sessionStateString)"
     }
 
     /// The measurement database behind RACP: every reading of the session, kept while the collector is away.
@@ -162,6 +176,12 @@ struct CGMServerView: View {
     private var sessionCard: some View {
         RoundedCard(title: "Session") {
             RoundedCardValueRow(label: "State", value: viewModel.sessionStateString)
+            RoundedCardValueRow(label: "Condition", value: viewModel.conditionString)
+            if viewModel.warmupEndDate != nil {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    RoundedCardValueRow(label: "Warm-up Ends", value: countdown(to: viewModel.warmupEndDate, now: context.date))
+                }
+            }
             RoundedCardValueRow(label: "Time Offset", value: viewModel.timeOffsetString)
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
@@ -181,6 +201,45 @@ struct CGMServerView: View {
                 Spacer()
                 Button(action: viewModel.stopSession) {
                     Text("Stop Session")
+                }
+            }
+        }
+    }
+
+    /// Warm-up, sensor condition and range (CGM-DESIGN §Lifecycle; TBD-03/05/07, HYD-G-003/006).
+    private var lifecycleCard: some View {
+        RoundedCard(title: "Sensor Lifecycle", footer: "Warm-up applies to the next session and can be changed while one is in progress. Replace Sensor starts a fresh session with empty records and calibrations and clears any failure. Fail Sensor stops readings and sets Sensor Malfunction until the sensor is replaced; a collector's Start Session answers Procedure Not Completed meanwhile. Temporary Issue keeps readings coming with NaN glucose, zero quality and General Device Fault until resolved. Readings outside the sensor range are reported at the boundary with the Device Can Process bit when the Feature has Sensor Result High-Low Detection. A session also ends by itself when its run time elapses.") {
+            LabeledSegmentedPicker("Warm-up", selection: $viewModel.warmupDuration)
+            Divider()
+            HStack {
+                Button("Replace Sensor", action: viewModel.replaceSensor)
+                Spacer()
+                Button("Fail Sensor", action: viewModel.failSensor)
+                    .disabled(viewModel.isFailed)
+                Spacer()
+                Button(viewModel.isImpaired ? "Resolve Issue" : "Temporary Issue", action: viewModel.toggleTemporaryIssue)
+                    .disabled(viewModel.isFailed)
+            }
+            .padding(.vertical, 4)
+            Divider()
+            numberRow("Sensor Range Low (mg/dL)", text: $viewModel.sensorRangeLowEntry)
+            numberRow("Sensor Range High (mg/dL)", text: $viewModel.sensorRangeHighEntry)
+            Button("Apply Range", action: viewModel.applySensorRange)
+                .padding(.vertical, 4)
+            if let message = viewModel.lifecycleMessage {
+                MessageView(message: message)
+            }
+            Divider()
+            Text("Lifecycle Log")
+            if viewModel.lifecycleEventStrings.isEmpty {
+                Text("No lifecycle events yet.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(viewModel.lifecycleEventStrings.enumerated()), id: \.offset) { _, line in
+                    Text(line)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -258,6 +317,27 @@ struct CGMServerView: View {
 
 struct CGMServerView_Previews: PreviewProvider {
     static var previews: some View {
-        CGMServerView(viewModel: CGMServerViewModel())
+        // Inside a stack so the preview spends the same navigation-bar height as the app.
+        NavigationStack {
+            CGMServerView(viewModel: runningSession)
+        }
+    }
+
+    /// A mid-session snapshot so the HUD renders a value, an arrow and a trace instead of placeholders.
+    static var runningSession: CGMServerViewModel {
+        let viewModel = CGMServerViewModel()
+        viewModel.isSensorPoweredOn = false   // otherwise onAppear starts a real sensor and mirrors it over these
+        viewModel.isSessionRunning = true
+        viewModel.sessionStateString = "running"
+        viewModel.condition = .healthy
+        viewModel.timeOffsetMinutes = 23
+        viewModel.timeOffsetString = "23 min"
+        viewModel.lastGlucose = 128
+        viewModel.lastTrend = 0.6
+        viewModel.recentReadings = stride(from: 0, through: 20, by: 5).enumerated().map { index, offset in
+            CGMReadingPoint(id: index, timeOffset: offset, glucose: 112 + Double(offset) * 0.8)
+        }
+        viewModel.nextMeasurementDate = Date().addingTimeInterval(137)
+        return viewModel
     }
 }

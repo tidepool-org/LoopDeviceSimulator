@@ -60,6 +60,10 @@ public struct DismissibleKeyboardTextField: UIViewRepresentable {
         textField.addTarget(context.coordinator, action: #selector(Coordinator.editingDidBegin), for: .editingDidBegin)
         textField.delegate = context.coordinator
         textField.accessibilityIdentifier = "dismissibleKeyboardTextField"
+        // UITextField's intrinsic width follows its text or placeholder, and SwiftUI will not shrink a UIKit
+        // view below that. A long placeholder beside a long label then widens the whole ScrollView past the
+        // screen. Let the field compress; the HStack's Spacer decides how wide it really is.
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return textField
     }
 
