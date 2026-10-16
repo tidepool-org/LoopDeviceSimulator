@@ -272,6 +272,20 @@ class CGMServerViewModel {
     var sinePeriodMinutesEntry: String = "360"
     var constantEntry: String = "120"
     var glucoseSourceMessage: String? = nil
+
+    // Trace effects (CGM-DESIGN §Glucose trace, HYD-C-018): entries are text, applied with Apply Effects.
+    var traceEffects: CGMTraceEffects = .none
+    var noiseEntry: String = "0"
+    var outlierChanceEntry: String = "0"
+    var outlierSizeEntry: String = "60"
+    var failedReadingChanceEntry: String = "0"
+    var effectsSeedEntry: String = "1"
+    var traceEffectsMessage: String? = nil
+
+    // Device clock (HYD-C-015/016): host clock plus a tester offset, in minutes on screen.
+    var clockOffset: TimeInterval = 0
+    var clockOffsetMinutesEntry: String = "0"
+    var clockOffsetMessage: String? = nil
     let scenarios: [CGMGlucoseScenario] = CGMScenarioLibrary.bundled
 
     var glucoseSourceOptions: [GlucoseSourceOption] {
@@ -291,6 +305,8 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
     @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
     @ObservationIgnored private var preservedSensorRange: ClosedRange<Double> = 40...400
+    @ObservationIgnored private var preservedTraceEffects: CGMTraceEffects = .none
+    @ObservationIgnored private var preservedClockOffset: TimeInterval = 0
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
@@ -329,12 +345,16 @@ class CGMServerViewModel {
         sensor.calibrationSchedule = calibrationSchedule.schedule
         sensor.warmupDuration = warmupDuration.rawValue
         sensor.sensorRange = preservedSensorRange
+        sensor.traceEffects = preservedTraceEffects
+        sensor.clockOffset = preservedClockOffset
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
         sessionRunTimeHoursEntry = String(sensor.sessionRunTime.hours)
         syncGlucoseSourceEntries(from: sensor.trace)
         syncSensorRangeEntries(from: sensor)
+        syncTraceEffectsEntries(from: sensor.traceEffects)
+        clockOffsetMinutesEntry = Self.format(sensor.clockOffset / 60)
 
         // Time Offset is clock-derived, so refresh the display once a minute. Common modes keep it ticking
         // while the tester scrolls.
@@ -357,6 +377,8 @@ class CGMServerViewModel {
             preservedRecordCapacity = sensor.recordStore.capacity
             preservedAlertLevels = sensor.alertLevels
             preservedSensorRange = sensor.sensorRange
+            preservedTraceEffects = sensor.traceEffects
+            preservedClockOffset = sensor.clockOffset
         }
         server?.disconnect()
         server = nil
@@ -527,6 +549,63 @@ class CGMServerViewModel {
         sensorRangeHighEntry = sensor.sensorRange.upperBound.compactDescription
     }
 
+    // MARK: - Trace effects
+
+    /// Applies the effect entries (percentages on screen, probabilities on the sensor); a bad entry is reported.
+    func applyTraceEffects() {
+        guard let noise = noiseEntry.parsedDouble, let outlierPercent = outlierChanceEntry.parsedDouble,
+              let outlierSize = outlierSizeEntry.parsedDouble, let failedPercent = failedReadingChanceEntry.parsedDouble,
+              let seed = UInt64(effectsSeedEntry.trimmingCharacters(in: .whitespaces)),
+              noise >= 0, (0...100).contains(outlierPercent), outlierSize >= 0, (0...100).contains(failedPercent)
+        else {
+            traceEffectsMessage = "Effects need noise ≥ 0, chances 0–100 %, outlier size ≥ 0 and a whole-number seed"
+            return
+        }
+        traceEffectsMessage = nil
+        let effects = CGMTraceEffects(noiseStandardDeviation: noise, outlierProbability: outlierPercent / 100, outlierMagnitude: outlierSize, errorProbability: failedPercent / 100, seed: seed)
+        if let sensor {
+            sensor.traceEffects = effects
+        } else {
+            preservedTraceEffects = effects
+        }
+    }
+
+    private func syncTraceEffectsEntries(from effects: CGMTraceEffects) {
+        noiseEntry = Self.format(effects.noiseStandardDeviation)
+        outlierChanceEntry = Self.format(effects.outlierProbability * 100)
+        outlierSizeEntry = Self.format(effects.outlierMagnitude)
+        failedReadingChanceEntry = Self.format(effects.errorProbability * 100)
+        effectsSeedEntry = String(effects.seed)
+        traceEffectsMessage = nil
+    }
+
+    /// One line for the Glucose Source card: what the sensor is applying right now.
+    var traceEffectsSummary: String {
+        guard traceEffects.isActive else { return "off" }
+        var parts: [String] = []
+        if traceEffects.noiseStandardDeviation > 0 { parts.append("noise σ \(Self.format(traceEffects.noiseStandardDeviation))") }
+        if traceEffects.outlierProbability > 0 { parts.append("outliers \(Self.format(traceEffects.outlierProbability * 100)) % ±\(Self.format(traceEffects.outlierMagnitude))") }
+        if traceEffects.errorProbability > 0 { parts.append("failed readings \(Self.format(traceEffects.errorProbability * 100)) %") }
+        return parts.joined(separator: ", ") + ", seed \(traceEffects.seed)"
+    }
+
+    // MARK: - Device clock
+
+    /// Applies the clock offset entry in minutes (negative allowed); takes effect at once, mid-session too.
+    func applyClockOffset() {
+        guard let minutes = clockOffsetMinutesEntry.parsedDouble, minutes.isFinite, abs(minutes) <= 7 * 24 * 60 else {
+            clockOffsetMessage = "Clock offset needs a number of minutes within ±7 days"
+            return
+        }
+        clockOffsetMessage = nil
+        if let sensor {
+            sensor.clockOffset = minutes * 60
+        } else {
+            preservedClockOffset = minutes * 60
+            clockOffset = minutes * 60
+        }
+    }
+
     func applySessionRunTime() {
         guard let sensor else { return }
         guard let hours = UInt16(sessionRunTimeHoursEntry) else {
@@ -679,6 +758,8 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
             warmupDuration = option
         }
         condition = sensor.condition
+        traceEffects = sensor.traceEffects
+        clockOffset = sensor.clockOffset
         lifecycleEventStrings = sensor.lifecycleEvents.suffix(20).reversed().map { String(describing: $0) }
         if let startTime = sensor.sessionStartTime {
             sessionStartTimeString = "\(startTime)\(sensor.sessionStartTimeSetByCollector ? " (written by collector)" : "")"

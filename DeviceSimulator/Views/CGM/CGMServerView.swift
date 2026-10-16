@@ -130,7 +130,7 @@ struct CGMServerView: View {
     }
 
     private var glucoseSourceCard: some View {
-        RoundedCard(title: "Glucose Source", footer: "The checked source is active; changes take effect at the next measurement. Traces ship with the CGM kit.") {
+        RoundedCard(title: "Glucose Source", footer: "The checked source is active; changes take effect at the next measurement. Traces ship with the CGM kit. Effects sit on top of any source: gaussian noise, outliers of the given size in a random direction, and failed readings (no value, zero quality, no fault bit). All draws come from the seed and restart at Start Session, so the same settings replay the same session.") {
             SingleSelectionCheckList<GlucoseSourceOption>(items: viewModel.glucoseSourceOptions, selectedItem: $viewModel.glucoseSource)
             switch viewModel.glucoseSource {
             case .sineWave:
@@ -150,6 +150,19 @@ struct CGMServerView: View {
             }
             if let message = viewModel.glucoseSourceMessage {
                 MessageView(message: message)
+            }
+            Group {
+                Divider()
+                RoundedCardValueRow(label: "Effects", value: viewModel.traceEffectsSummary)
+                numberRow("Noise σ (mg/dL)", text: $viewModel.noiseEntry)
+                numberRow("Outlier chance (%)", text: $viewModel.outlierChanceEntry)
+                numberRow("Outlier size (mg/dL)", text: $viewModel.outlierSizeEntry)
+                numberRow("Failed reading chance (%)", text: $viewModel.failedReadingChanceEntry)
+                numberRow("Seed", text: $viewModel.effectsSeedEntry)
+                Button("Apply Effects", action: viewModel.applyTraceEffects)
+                if let message = viewModel.traceEffectsMessage {
+                    MessageView(message: message)
+                }
             }
         }
     }
@@ -186,12 +199,25 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
             RoundedCardValueRow(label: "Session Run Time", value: viewModel.sessionRunTimeString)
+            // HYD-C-015/016: the clock the collector sees is the host clock plus the tester's offset.
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                RoundedCardValueRow(label: "Device Clock", value: deviceClockText(now: context.date))
+            }
             Divider()
             HStack {
                 Text("Set Run Time (hours)")
                 Spacer()
                 runTimeEntry
                 Button("Apply", action: viewModel.applySessionRunTime)
+            }
+            HStack {
+                Text("Clock Offset (minutes)")
+                Spacer()
+                clockOffsetEntry
+                Button("Apply", action: viewModel.applyClockOffset)
+            }
+            if let message = viewModel.clockOffsetMessage {
+                MessageView(message: message)
             }
             Divider()
             HStack {
@@ -243,6 +269,30 @@ struct CGMServerView: View {
                 }
             }
         }
+    }
+
+    /// Device time with the offset applied, and how far it sits from the host clock.
+    private func deviceClockText(now: Date) -> String {
+        let device = now.addingTimeInterval(viewModel.clockOffset).formatted(date: .omitted, time: .standard)
+        guard viewModel.clockOffset != 0 else { return device }
+        let minutes = viewModel.clockOffset / 60
+        return "\(device) (\(minutes > 0 ? "+" : "")\(minutes.compactDescription) min)"
+    }
+
+    /// Minutes, negative allowed, so the keyboard needs a minus sign.
+    private var clockOffsetEntry: some View {
+        DismissibleKeyboardTextField(
+            text: $viewModel.clockOffsetMinutesEntry,
+            placeholder: "minutes",
+            font: .preferredFont(forTextStyle: .headline),
+            textColor: .blue,
+            textAlignment: .right,
+            keyboardType: .numbersAndPunctuation,
+            shouldBecomeFirstResponder: false,
+            maxLength: 7,
+            doneButtonColor: UIColor(Color.accentColor),
+            textFieldDidBeginEditing: nil
+        )
     }
 
     private var runTimeEntry: some View {
