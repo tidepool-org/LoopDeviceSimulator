@@ -133,7 +133,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
 
     func stopClient() {
         SessionLog.shared.log(.lifecycle, "authorization control client stopped")
-        SessionLog.shared.context = SessionLog.Context()
+        defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
         disconnect()
         reset()
         authorizationControlController?.centralManager?.stopScan()

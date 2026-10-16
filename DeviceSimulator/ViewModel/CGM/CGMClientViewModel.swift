@@ -227,7 +227,7 @@ class CGMClientViewModel: ObservableObject {
     /// builds a fresh one on the next appearance.
     func stopClient() {
         SessionLog.shared.log(.lifecycle, "CGM collector client stopped")
-        SessionLog.shared.context = SessionLog.Context()
+        defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
         collector?.stop()
         collector = nil
         reset()

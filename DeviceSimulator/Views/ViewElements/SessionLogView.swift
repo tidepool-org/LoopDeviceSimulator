@@ -15,6 +15,8 @@ struct SessionLogView: View {
     @State private var confirmClear = false
 
     var body: some View {
+        // Filtered once per body; the footer reuses it.
+        let entries = self.entries
         List(entries) { entry in
             row(entry)
                 .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
@@ -34,7 +36,7 @@ struct SessionLogView: View {
                 } label: {
                     Image(systemName: filter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 }
-                ShareLink(item: log.fileURL, preview: SharePreview("HYDRA session log"))
+                ShareLink(item: SessionLogExport(), preview: SharePreview("HYDRA session log"))
                 Button(role: .destructive) {
                     confirmClear = true
                 } label: {
@@ -48,7 +50,7 @@ struct SessionLogView: View {
             Text("Deletes the log file on this device. Share it first if you need it.")
         }
         .safeAreaInset(edge: .bottom) {
-            Text(footerText)
+            Text(footerText(shown: entries.count))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity)
@@ -62,9 +64,9 @@ struct SessionLogView: View {
         return log.recent.filter { $0.kind == filter }
     }
 
-    private var footerText: String {
-        let shown = filter.map { " · showing \(entries.count) \($0.rawValue)" } ?? ""
-        return "\(log.entryCount) entries · \(log.fileSizeDescription)\(shown)"
+    private func footerText(shown: Int) -> String {
+        let filtered = filter.map { " · showing \(shown) \($0.rawValue)" } ?? ""
+        return "\(log.entryCount) entries · \(log.fileSizeDescription)\(filtered)"
     }
 
     private func row(_ entry: SessionLogEntry) -> some View {

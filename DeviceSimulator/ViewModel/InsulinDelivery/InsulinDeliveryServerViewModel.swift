@@ -20,25 +20,25 @@ class InsulinDeliveryServerViewModel {
     var consoleMessages: String = ""
     var isServerBusy = false {
         didSet {
-            if oldValue != isServerBusy { SessionLog.shared.stimulus("Server Busy → \(isServerBusy ? "on" : "off")") }
+            if oldValue != isServerBusy { stimulus("Server Busy → \(isServerBusy ? "on" : "off")") }
             if mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy != isServerBusy {
                 mockInsulinDeliveryPump?.recordAccessControlPoint.isServerBusy = isServerBusy
             }
         }
     }
     var procedureAlreadyInProgress = false {
-        didSet { if oldValue != procedureAlreadyInProgress { SessionLog.shared.stimulus("Procedure Already In Progress → \(procedureAlreadyInProgress ? "on" : "off")") } }
+        didSet { if oldValue != procedureAlreadyInProgress { stimulus("Procedure Already In Progress → \(procedureAlreadyInProgress ? "on" : "off")") } }
     }
     var outOfRangeSchedule = false {
-        didSet { if oldValue != outOfRangeSchedule { SessionLog.shared.stimulus("Out of Range Schedule → \(outOfRangeSchedule ? "on" : "off")") } }
+        didSet { if oldValue != outOfRangeSchedule { stimulus("Out of Range Schedule → \(outOfRangeSchedule ? "on" : "off")") } }
     }
     var numberOfSubscribedDevices: Int = 0
     var readyToDisconnect = false {
-        didSet { if oldValue != readyToDisconnect { SessionLog.shared.stimulus("Ready to Disconnect → \(readyToDisconnect ? "on" : "off")") } }
+        didSet { if oldValue != readyToDisconnect { stimulus("Ready to Disconnect → \(readyToDisconnect ? "on" : "off")") } }
     }
     var isPumpPoweredOn = true {
         didSet {
-            SessionLog.shared.stimulus("Power On Pump → \(isPumpPoweredOn ? "on" : "off")")
+            stimulus("Power On Pump → \(isPumpPoweredOn ? "on" : "off")")
             if isPumpPoweredOn {
                 startServer()
             } else {
@@ -48,14 +48,13 @@ class InsulinDeliveryServerViewModel {
     }
     var isPumpBehaviourEnabled = false {
         didSet {
-            // Also mirrored from the pump on every update; only a real change is a stimulus.
-            if oldValue != isPumpBehaviourEnabled { SessionLog.shared.stimulus("Pump behaviour → \(isPumpBehaviourEnabled ? "on" : "off")") }
+            if oldValue != isPumpBehaviourEnabled { stimulus("Pump behaviour → \(isPumpBehaviourEnabled ? "on" : "off")") }
             mockInsulinDeliveryPump?.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         }
     }
     var isAuthorizationControlEnabled = false {
         didSet {
-            if oldValue != isAuthorizationControlEnabled { SessionLog.shared.stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")") }
+            if oldValue != isAuthorizationControlEnabled { stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")") }
             mockInsulinDeliveryPump?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
@@ -77,12 +76,23 @@ class InsulinDeliveryServerViewModel {
     var bolusDeliveryString: String = ""
     
     @ObservationIgnored private var serverName: String?
-    
+
+    /// True while the pump's state is being mirrored into these properties (delegate updates, stop), so the
+    /// didSet handlers do not log the pump's own defaults or a teardown reset as something the tester did.
+    @ObservationIgnored private var isMirroring = false
+
+    private func stimulus(_ detail: String) {
+        guard !isMirroring else { return }
+        SessionLog.shared.stimulus(detail)
+    }
+
     /// `nil` keeps the current name (restart); an empty string falls back to the pump default.
     func startServer(serverName: String? = nil) {
         if let serverName = serverName {
             self.serverName = serverName.isEmpty ? nil : serverName
         }
+        // Before the GATT server exists, so its first console lines already carry the mode.
+        SessionLog.shared.context = SessionLog.Context(mode: .pump, role: .server, scenario: "mock pump", scenarioVersion: nil)
         let server = GATTServer(advertisedName: self.serverName ?? InsulinDeliveryConstants.serverName, advertisedServices: [InsulinDeliveryCharacteristicUUID.service.cbUUID, ACCharacteristicUUID.service.cbUUID])
         self.server = server
         self.server?.delegate = self
@@ -91,13 +101,17 @@ class InsulinDeliveryServerViewModel {
         mockInsulinDeliveryPump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
         mockInsulinDeliveryPump?.delegate = self
         mockPumpDidUpdate(mockInsulinDeliveryPump!)
-        SessionLog.shared.context = SessionLog.Context(mode: .pump, role: .server, scenario: "mock pump", scenarioVersion: nil)
         SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName)")
     }
 
     func stopServer() {
+        // Resets below are teardown, not tester actions; the context stays until the last kit line is out.
+        isMirroring = true
+        defer {
+            isMirroring = false
+            SessionLog.shared.context = SessionLog.Context()
+        }
         if mockInsulinDeliveryPump != nil { SessionLog.shared.log(.lifecycle, "pump server stopped") }
-        SessionLog.shared.context = SessionLog.Context()
         server?.disconnect()
         server = nil
         mockInsulinDeliveryPump = nil
@@ -110,7 +124,7 @@ class InsulinDeliveryServerViewModel {
     }
 
     func restartServer() {
-        SessionLog.shared.stimulus("Restart Server")
+        stimulus("Restart Server")
         stopServer()
         startServer()
         consoleMessages.append("server restarted")
@@ -158,7 +172,7 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
-        SessionLog.shared.stimulus("Issue Annunciation: \(annunciationTypeToIssue.description)")
+        stimulus("Issue Annunciation: \(annunciationTypeToIssue.description)")
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
     }
 }
@@ -166,7 +180,7 @@ extension InsulinDeliveryServerViewModel {
 // MARK: - Authorization Control
 extension InsulinDeliveryServerViewModel {
     func sendSecureIndication() {
-        SessionLog.shared.stimulus("Send secure indication")
+        stimulus("Send secure indication")
         let message = "This is a secure indication".data(using: .utf8)!
         mockInsulinDeliveryPump?.sendSecureIndication(message, to: 1)
     }
@@ -180,7 +194,7 @@ extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
             mockInsulinDeliveryPump?.featureCharacteristic.flags.contains(.supportedE2EProtection) ?? false
         }
         set {
-            SessionLog.shared.stimulus("E2E Protection Supported → \(newValue ? "on" : "off")")
+            stimulus("E2E Protection Supported → \(newValue ? "on" : "off")")
             if newValue {
                 mockInsulinDeliveryPump?.featureCharacteristic.flags.insert(.supportedE2EProtection)
             } else {
@@ -193,6 +207,8 @@ extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
 // MARK: - Mock Pump Delegate
 extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
     func mockPumpDidUpdate(_ pump: InsulinDeliveryServiceKit.MockInsulinDeliveryPump) {
+        isMirroring = true
+        defer { isMirroring = false }
         therapyStateString = String(describing: pump.therapyState)
         operationalStateString = String(describing: pump.operationalState)
         isPumpBehaviourEnabled = pump.isPumpBehaviourEnabled

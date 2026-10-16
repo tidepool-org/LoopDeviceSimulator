@@ -287,7 +287,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
 
     func stopClient() {
         SessionLog.shared.log(.lifecycle, "insulin delivery client stopped")
-        SessionLog.shared.context = SessionLog.Context()
+        defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
         disconnect()
         reset()
         insulinDeliveryController?.centralManager?.stopScan()
