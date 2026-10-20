@@ -615,6 +615,16 @@ extension CGMClientViewModel: CGMSensorDelegate {
         }
     }
 
+    /// The sensor flipped protection (AC Status) or a key came or went; the Use Secure Channel toggle follows.
+    func sensorDidUpdateSecurity(_ sensor: CGMSensorComms) {
+        onMain {
+            self.authorizationMessage = sensor.usesSecureChannel
+                ? "sensor protects its resources; CGM traffic is on the secure channel"
+                : "sensor serves CGM plainly\(sensor.isSecurityEstablished ? " (key kept for when protection turns on)" : ""); CGM traffic is on the plain characteristics"
+            self.syncSecurityState()
+        }
+    }
+
     func sensor(_ sensor: CGMSensorComms, didReceiveMeasurements records: [CGMMeasurementRecord]) {
         onMain {
             // Every notification is contact with the sensor, even a status-only record identical to the last.
