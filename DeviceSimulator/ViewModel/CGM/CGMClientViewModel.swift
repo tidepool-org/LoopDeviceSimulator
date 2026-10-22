@@ -82,9 +82,15 @@ class CGMClientViewModel: ObservableObject {
                 guard let self else { return }
                 switch result {
                 case .success:
-                    authorizationMessage = sensor?.isSecurityEstablished == true
-                        ? "secure session established; CGM traffic now uses the secure channel"
-                        : "done; no secure session (key invalidated or exchange incomplete)"
+                    // The channel follows the sensor's protection, not just the key (AC Data In refuses
+                    // requests while the sensor serves CGM plainly), so say which path traffic is on.
+                    if sensor?.isSecurityEstablished != true {
+                        authorizationMessage = "done; no secure session (key invalidated or exchange incomplete)"
+                    } else if sensor?.usesSecureChannel == true {
+                        authorizationMessage = "secure session established; CGM traffic now uses the secure channel"
+                    } else {
+                        authorizationMessage = "secure session established; sensor serves CGM plainly, key kept for when protection turns on"
+                    }
                 case .failure(let error):
                     authorizationMessage = "key exchange failed: \(error.localizedDescription)"
                 }
@@ -208,13 +214,22 @@ class CGMClientViewModel: ObservableObject {
     func startClient() {
         SessionLog.shared.context = SessionLog.Context(mode: .cgm, role: .client)
         SessionLog.shared.log(.lifecycle, "CGM collector client started")
+        // A read that was in flight when the last client was torn down may have completed late; start clean.
+        reset()
         // No background mode in the simulator, so no state restoration.
         let sensor = ContinuousGlucoseMonitorService(restoreOptions: nil)
         sensor.delegate = self
         sensor.loggingDelegate = self
-        sensor.setOOBString(CGMConstants.oobRandomNumber)
+        // The key the tester sees is the key the automatic exchange uses, including an edited one.
+        sensor.setOOBString(effectiveSensorKey)
         self.sensor = sensor
         sensor.scanForSensors()
+    }
+
+    /// The Sensor Key entry, or the mock sensor's default when it is blank.
+    private var effectiveSensorKey: String {
+        let key = sensorKeyEntry.trimmingCharacters(in: .whitespaces)
+        return key.isEmpty ? CGMConstants.oobRandomNumber : key
     }
 
     /// Tears the service down so no callback can restart scanning after the view is gone; `startClient`
@@ -223,6 +238,7 @@ class CGMClientViewModel: ObservableObject {
         SessionLog.shared.log(.lifecycle, "CGM collector client stopped")
         defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
         sensor?.delegate = nil
+        sensor?.loggingDelegate = nil   // a read still in flight must not write into the cleared console
         sensor?.prepareForDeactivation()
         sensor = nil
         reset()
@@ -582,6 +598,11 @@ extension CGMClientViewModel: CGMSensorDelegate {
             if isConnected {
                 SessionLog.shared.log(.connection, "connected to sensor")
                 self.isPeripheralConnected = true
+                // BluetoothCommonKit reconnects to the remembered sensor by itself, so this branch also runs
+                // without a tap on the list; the label and the toggles must be restored here, not only on tap.
+                self.connectedMessage = "Disconnect from \(self.connectedDevice?.name ?? "Unknown device")"
+                // Configuration has already subscribed to everything; a failed setup step skips sensorIsReady.
+                self.syncSubscriptions()
             } else {
                 SessionLog.shared.log(.connection, "disconnected from sensor")
                 self.connectedMessage = "Currently disconnected"
@@ -590,7 +611,7 @@ extension CGMClientViewModel: CGMSensorDelegate {
                 // Whatever was still being reported is not coming; keep what arrived.
                 self.isReportInProgress = false
                 self.syncSecurityState()
-                self.consoleMessages = "disconnected; wait for the user to switch back to peripheral view\n" + self.consoleMessages
+                self.consoleMessages = "disconnected; BluetoothCommonKit reconnects when the sensor reappears\n" + self.consoleMessages
             }
         }
     }
@@ -653,10 +674,12 @@ extension CGMClientViewModel: CGMSensorDelegate {
 
     func sensor(_ sensor: CGMSensorComms, didReceiveRACPResponse response: CGMRACPResponse) {
         // Normally the request's completion closes the report; this covers a Response Code that arrives
-        // after the sensor refused a later request and the completion is already gone.
-        guard case let .responseCode(request, _) = response,
-              request == CGMRACPOpcode.reportStoredRecords.rawValue || request == CGMRACPOpcode.abortOperation.rawValue
-        else { return }
+        // after the sensor refused a later request and the completion is already gone. An Abort closes it
+        // only when it succeeded: after Abort Unsuccessful the records keep coming and still belong to it.
+        guard case let .responseCode(request, code) = response else { return }
+        let closesReport = request == CGMRACPOpcode.reportStoredRecords.rawValue
+            || (request == CGMRACPOpcode.abortOperation.rawValue && code == CGMRACPResponseCode.success.rawValue)
+        guard closesReport else { return }
         onMain { self.isReportInProgress = false }
     }
 
