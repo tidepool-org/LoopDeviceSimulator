@@ -5,6 +5,9 @@
 //  Created by Nathaniel Hamming on 2026-10-01.
 //  Copyright © 2026 Tidepool Project. All rights reserved.
 //
+//  Test collector UI over the kit's `ContinuousGlucoseMonitorService`, the same client a Loop CGM plugin
+//  builds on. The service calls back on BluetoothCommonKit's queues, so everything here hops to the main
+//  thread before touching published state.
 
 import SwiftUI
 import CoreBluetooth
@@ -13,7 +16,7 @@ import ContinuousGlucoseMonitorServiceKit
 
 class CGMClientViewModel: ObservableObject {
 
-    private var collector: CGMCollectorController?
+    private var sensor: ContinuousGlucoseMonitorService?
 
     @Published var deviceList: [Device] = []
     @Published var connectedDevice: Device? = nil {
@@ -26,7 +29,8 @@ class CGMClientViewModel: ObservableObject {
 
     // MARK: - Configure notifications / indications
 
-    /// Set while the toggles are being cleared after a disconnect, so no CCCD writes are attempted.
+    /// Set while the toggles are being synced from the sensor or cleared after a disconnect, so no CCCD
+    /// writes are attempted. The kit subscribes to everything during configuration, so they start ON.
     private var isResettingSubscriptions = false
 
     @Published var measurementNotificationsEnabled: Bool = false {
@@ -46,12 +50,12 @@ class CGMClientViewModel: ObservableObject {
     // MARK: - Authorization Control (secure channel)
 
     @Published var isSecurityEstablished: Bool = false
-    /// Mirrors the collector's routing flag; the tester can drop back to plain characteristics to see the
+    /// Mirrors the service's routing flag; the tester can drop back to plain characteristics to see the
     /// sensor refuse them with Insufficient Authorization.
     @Published var usesSecureChannel: Bool = false {
         didSet {
             guard !isSyncingSecurity, oldValue != usesSecureChannel else { return }
-            collector?.usesSecureChannel = usesSecureChannel
+            sensor?.usesSecureChannel = usesSecureChannel
         }
     }
     @Published var authorizationMessage: String? = nil
@@ -71,25 +75,47 @@ class CGMClientViewModel: ObservableObject {
             authorizationMessage = "Sensor key must be at most \(CGMConstants.maxSensorKeyBytes) bytes; \(key.utf8.count) entered"
             return
         }
-        collector?.sensorKey = key
+        sensor?.setOOBString(key)
         authorizationMessage = "key exchange in progress with sensor key \(key)…"
-        collector?.establishSecureSession { [weak self] message in
-            self?.authorizationMessage = message
-            self?.syncSecurityState()
+        sensor?.establishSecureSession { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                switch result {
+                case .success:
+                    // The channel follows the sensor's protection, not just the key (AC Data In refuses
+                    // requests while the sensor serves CGM plainly), so say which path traffic is on.
+                    if sensor?.isSecurityEstablished != true {
+                        authorizationMessage = "done; no secure session (key invalidated or exchange incomplete)"
+                    } else if sensor?.usesSecureChannel == true {
+                        authorizationMessage = "secure session established; CGM traffic now uses the secure channel"
+                    } else {
+                        authorizationMessage = "secure session established; sensor serves CGM plainly, key kept for when protection turns on"
+                    }
+                case .failure(let error):
+                    authorizationMessage = "key exchange failed: \(error.localizedDescription)"
+                }
+                syncSecurityState()
+            }
         }
     }
 
     func invalidateKey() {
-        collector?.invalidateKey { [weak self] message in
-            self?.authorizationMessage = message
-            self?.syncSecurityState()
+        sensor?.invalidateKey { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                switch result {
+                case .success: authorizationMessage = "key invalidated; CGM traffic is back on the plain characteristics"
+                case .failure(let error): authorizationMessage = "invalidate key failed: \(error.localizedDescription)"
+                }
+                syncSecurityState()
+            }
         }
     }
 
     private func syncSecurityState() {
         isSyncingSecurity = true
-        isSecurityEstablished = collector?.isSecurityEstablished ?? false
-        usesSecureChannel = collector?.usesSecureChannel ?? false
+        isSecurityEstablished = sensor?.isSecurityEstablished ?? false
+        usesSecureChannel = sensor?.usesSecureChannel ?? false
         isSyncingSecurity = false
     }
 
@@ -171,65 +197,50 @@ class CGMClientViewModel: ObservableObject {
     @Published var racpMessage: String? = nil
     @Published var consoleMessages: String = ""
 
+    /// One line for a procedure result: the value, or the error.
+    private static func describe<T>(_ result: DeviceCommResult<T>, success: ((T) -> String)? = nil) -> String {
+        switch result {
+        case .success(let value): return success?(value) ?? String(describing: value)
+        case .failure(let error): return "error: \(error.localizedDescription)"
+        }
+    }
+
+    private func onMain(_ work: @escaping () -> Void) {
+        if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
+    }
+
     // MARK: - Peripheral connection
 
     func startClient() {
         SessionLog.shared.context = SessionLog.Context(mode: .cgm, role: .client)
         SessionLog.shared.log(.lifecycle, "CGM collector client started")
-        collector = CGMCollectorController()
-        collector?.delegate = self
-        collector?.onMeasurement = { [weak self] records in
-            guard let self else { return }
-            // Every notification is contact with the sensor, even a status-only record identical to the last.
-            self.lastMeasurementReceivedAt = Date()
-            let fresh = self.acceptRecords(records)
-            if self.isReportInProgress {
-                self.reportedRecords.append(contentsOf: fresh)
-                self.reportedDuplicateCount += records.count - fresh.count
-            }
-            // A report can replay history, so only a record at or past the newest offset becomes "last".
-            guard let latest = fresh.max(by: { $0.timeOffset < $1.timeOffset }) else { return }
-            if let last = self.lastMeasurement, latest.timeOffset < last.timeOffset { return }
-            self.lastMeasurement = latest
-        }
-        collector?.onSecurityStateChange = { [weak self] in
-            self?.syncSecurityState()
-        }
-        collector?.onSpecificOpsResponse = { [weak self] response in
-            self?.mirrorSpecificOpsResponse(response)
-        }
+        // A read that was in flight when the last client was torn down may have completed late; start clean.
+        reset()
+        // No background mode in the simulator, so no state restoration.
+        let sensor = ContinuousGlucoseMonitorService(restoreOptions: nil)
+        sensor.delegate = self
+        sensor.loggingDelegate = self
+        // The key the tester sees is the key the automatic exchange uses, including an edited one.
+        sensor.setOOBString(effectiveSensorKey)
+        self.sensor = sensor
+        sensor.scanForSensors()
     }
 
-    /// A Get answer moves the matching entry to what the sensor holds, so the picker shows the sensor's value
-    /// rather than the tester's last choice. A communication interval outside the offered options is left to
-    /// the message text.
-    private func mirrorSpecificOpsResponse(_ response: CGMSpecificOpsResponse) {
-        switch response {
-        case .communicationInterval(let minutes):
-            if let option = CommunicationIntervalOption(rawValue: minutes) {
-                communicationInterval = option
-            }
-        case let .level(opcode, value):
-            // Only the level the tester is working on; a Get for another family must not clobber the entry.
-            guard let family = opcode.alertLevelKeyPath, family == selectedSpecificOp.alertLevelKeyPath, value.isFinite else { return }
-            alertLevelEntry = value.compactDescription
-        case let .responseCode(request, code):
-            // A new session has a new start time; refresh it so calibrations are stamped against the right one.
-            if request == CGMSpecificOpsOpcode.startSession.rawValue, code == CGMSpecificOpsResponseCode.success.rawValue {
-                collector?.readSessionStartTime { [weak self] in self?.readSessionStartTimeMessage = $0 }
-            }
-        case .calibrationValue:
-            break
-        }
+    /// The Sensor Key entry, or the mock sensor's default when it is blank.
+    private var effectiveSensorKey: String {
+        let key = sensorKeyEntry.trimmingCharacters(in: .whitespaces)
+        return key.isEmpty ? CGMConstants.oobRandomNumber : key
     }
 
-    /// Tears the controller down so no callback can restart scanning after the view is gone; `startClient`
+    /// Tears the service down so no callback can restart scanning after the view is gone; `startClient`
     /// builds a fresh one on the next appearance.
     func stopClient() {
         SessionLog.shared.log(.lifecycle, "CGM collector client stopped")
         defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
-        collector?.stop()
-        collector = nil
+        sensor?.delegate = nil
+        sensor?.loggingDelegate = nil   // a read still in flight must not write into the cleared console
+        sensor?.prepareForDeactivation()
+        sensor = nil
         reset()
         deviceList.removeAll()
         consoleMessages.removeAll()
@@ -239,20 +250,23 @@ class CGMClientViewModel: ObservableObject {
     func connectToDevice(_ device: Device) {
         guard let uuid = UUID(uuidString: device.uuid) else { return }
         connectedDevice = device
-        collector?.connectToPeripheralWithUUID(uuid: uuid)
+        sensor?.connectToSensor(withIdentifier: uuid)
     }
 
     func refreshList() {
         deviceList.removeAll()
-        // The disconnect button tears the controller down; a refresh brings it back so scanning resumes.
-        if collector == nil {
+        if sensor == nil {
             startClient()
+        } else {
+            sensor?.scanForSensors()
         }
-        collector?.scanForPeripherals()
     }
 
+    /// Forget rather than disconnect: BluetoothCommonKit reconnects to a remembered sensor on its own, which
+    /// is right for Loop and wrong for a tester who just tapped Disconnect. Scanning resumes for the list.
     func disconnect() {
-        collector?.disconnectFromPeripheral()
+        sensor?.forgetSensor()
+        sensor?.scanForSensors()
     }
 
     func switchToPeripheralList() {
@@ -299,33 +313,44 @@ class CGMClientViewModel: ObservableObject {
         configureMessage = nil
     }
 
+    /// After configuration the kit has subscribed; show what the sensor actually has on.
+    private func syncSubscriptions() {
+        guard let sensor else { return }
+        isResettingSubscriptions = true
+        measurementNotificationsEnabled = sensor.isNotifying(.measurement)
+        featureIndicationsEnabled = sensor.isNotifying(.feature)
+        racpIndicationsEnabled = sensor.isNotifying(.recordAccessControlPoint)
+        cgmcpIndicationsEnabled = sensor.isNotifying(.specificOpsControlPoint)
+        isResettingSubscriptions = false
+    }
+
     private func configureIfChanged(_ uuid: CGMCharacteristicUUID, _ oldValue: Bool, _ newValue: Bool) {
         guard oldValue != newValue, !isResettingSubscriptions else { return }
-        collector?.configureNotifications(uuid, enabled: newValue) { message in
-            self.configureMessage = "\(uuid.name): \(message)"
+        sensor?.setNotifications(uuid, enabled: newValue) { [weak self] result in
+            self?.onMain { self?.configureMessage = "\(uuid.name): \(Self.describe(result) { _ in "configured: \(newValue)" })" }
         }
     }
 
     // MARK: - Reads
 
     func readFeature() {
-        collector?.readFeature { self.featureMessage = $0 }
+        sensor?.getFeature { [weak self] result in self?.onMain { self?.featureMessage = Self.describe(result) } }
     }
 
     func readStatus() {
-        collector?.readStatus { self.statusMessage = $0 }
+        sensor?.getStatus { [weak self] result in self?.onMain { self?.statusMessage = Self.describe(result) } }
     }
 
     func readSessionStartTime() {
-        collector?.readSessionStartTime { self.readSessionStartTimeMessage = $0 }
+        sensor?.getSessionStartTime { [weak self] result in self?.onMain { self?.readSessionStartTimeMessage = Self.describe(result) } }
     }
 
     func readSessionRunTime() {
-        collector?.readSessionRunTime { self.sessionRunTimeMessage = $0 }
+        sensor?.getSessionRunTime { [weak self] result in self?.onMain { self?.sessionRunTimeMessage = Self.describe(result) } }
     }
 
     func readBatteryLevel() {
-        collector?.readBatteryLevel { self.batteryMessage = $0 }
+        sensor?.getBatteryLevel { [weak self] result in self?.onMain { self?.batteryMessage = Self.describe(result) { "battery \($0)%" } } }
     }
 
     /// Reads the mandatory DIS characteristics one after another, appending each result.
@@ -337,22 +362,26 @@ class CGMClientViewModel: ObservableObject {
 
     private func readDeviceInformation(_ remaining: ArraySlice<DeviceInfoCharacteristicUUID>) {
         guard let uuid = remaining.first else { return }
-        collector?.readDeviceInformation(uuid) { message in
-            self.deviceInformationMessage = (self.deviceInformationMessage ?? "") + "\(uuid.name): \(message)\n"
-            self.readDeviceInformation(remaining.dropFirst())
+        sensor?.getDeviceInformation(uuid) { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                deviceInformationMessage = (deviceInformationMessage ?? "") + "\(uuid.name): \(Self.describe(result))\n"
+                readDeviceInformation(remaining.dropFirst())
+            }
         }
     }
 
     // MARK: - Writes
 
     func writeSessionStartTime() {
-        collector?.writeSessionStartTime { [weak self] message in
-            guard let self else { return }
-            self.writeSessionStartTimeMessage = message
-            // The sensor re-derives its start time from the write (§3.4.1); refresh the copy used to stamp
-            // calibrations. A refused write leaves the old value, which is still the sensor's.
-            guard !message.contains("error") else { return }
-            self.collector?.readSessionStartTime { [weak self] in self?.readSessionStartTimeMessage = $0 }
+        sensor?.setSessionStartTime { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                writeSessionStartTimeMessage = Self.describe(result) { "written" }
+                // The sensor re-derives its start time from the write (§3.4.1); refresh the copy used to stamp
+                // calibrations. A refused write leaves the old value, which is still the sensor's.
+                if case .success = result { readSessionStartTime() }
+            }
         }
     }
 
@@ -371,40 +400,36 @@ class CGMClientViewModel: ObservableObject {
 
     /// Minutes since the sensor's Session Start Time as last read; nil until it has been read.
     private var currentTimeOffset: UInt16? {
-        guard let start = collector?.sessionStartTime?.date else { return nil }
+        guard let start = sensor?.sessionStartTime?.date else { return nil }
         return UInt16(clamping: max(0, Int(Date().timeIntervalSince(start) / 60)))
     }
 
     func startSession() {
-        sendSpecificOps(.startSession)
+        cgmcpMessage = nil
+        sensor?.startSession(completion: cgmcpCompletion)
     }
 
     func stopSession() {
-        sendSpecificOps(.stopSession)
+        cgmcpMessage = nil
+        sensor?.stopSession(completion: cgmcpCompletion)
     }
 
-    private func sendSpecificOps(_ opcode: CGMSpecificOpsOpcode) {
-        guard let collector else { return }
-        sendSpecificOps(CGMSpecificOpsRequest.encode(opcode, e2eCRC: collector.isE2EProtectionSupported))
-    }
-
-    /// Builds the selected request from the operand entries; a bad entry is reported instead of sent.
+    /// Sends the selected request from the operand entries; a bad entry is reported instead of sent.
     func sendSelectedSpecificOp() {
-        guard let collector else { return }
-        let e2eCRC = collector.isE2EProtectionSupported
+        guard let sensor else { return }
         let opcode = selectedSpecificOp
-        let request: Data
+        cgmcpMessage = nil
         switch specificOpsOperand {
         case .none:
-            request = CGMSpecificOpsRequest.encode(opcode, e2eCRC: e2eCRC)
+            sensor.sendSpecificOpsRequest(opcode, operand: Data(), completion: cgmcpCompletion)
         case .communicationIntervalMinutes:
-            request = CGMSpecificOpsRequest.setCommunicationInterval(minutes: communicationInterval.rawValue, e2eCRC: e2eCRC)
+            sensor.setCommunicationInterval(minutes: communicationInterval.rawValue, completion: cgmcpCompletion)
         case .calibrationRecordNumber:
             guard let number = UInt16(calibrationRecordNumberEntry) else {
                 cgmcpMessage = "Record number must be 0–65535 (65535 = last)"
                 return
             }
-            request = CGMSpecificOpsRequest.getGlucoseCalibrationValue(recordNumber: number, e2eCRC: e2eCRC)
+            sensor.getGlucoseCalibrationValue(recordNumber: number, completion: cgmcpCompletion)
         case .calibrationRecord:
             guard let glucose = calibrationGlucoseEntry.parsedDouble else {
                 cgmcpMessage = "Calibration glucose must be numeric"
@@ -417,22 +442,45 @@ class CGMClientViewModel: ObservableObject {
                 cgmcpMessage = "Read Session Start Time first so the calibration can be stamped"
                 return
             }
-            let record = CGMCalibrationRecord(glucoseConcentration: glucose, calibrationTime: calibrationTime)
-            request = CGMSpecificOpsRequest.setGlucoseCalibrationValue(record, e2eCRC: e2eCRC)
+            sensor.setGlucoseCalibrationValue(CGMCalibrationRecord(glucoseConcentration: glucose, calibrationTime: calibrationTime), completion: cgmcpCompletion)
         case .glucoseLevel, .rateLevel:
             guard let level = alertLevelEntry.parsedDouble else {
                 cgmcpMessage = "Alert level must be numeric"
                 return
             }
-            request = CGMSpecificOpsRequest.setLevel(opcode, value: level, e2eCRC: e2eCRC)
+            sensor.setAlertLevel(opcode, value: level, completion: cgmcpCompletion)
         }
-        sendSpecificOps(request)
     }
 
-    private func sendSpecificOps(_ request: Data) {
-        cgmcpMessage = nil
-        collector?.sendSpecificOpsRequest(request) { message in
-            self.cgmcpMessage = (self.cgmcpMessage ?? "") + "\n" + message
+    private var cgmcpCompletion: CGMSpecificOpsCompletion {
+        { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                cgmcpMessage = (cgmcpMessage ?? "") + "\nCGMCP " + Self.describe(result)
+            }
+        }
+    }
+
+    /// A Get answer moves the matching entry to what the sensor holds, so the picker shows the sensor's value
+    /// rather than the tester's last choice. A communication interval outside the offered options is left to
+    /// the message text.
+    private func mirrorSpecificOpsResponse(_ response: CGMSpecificOpsResponse) {
+        switch response {
+        case .communicationInterval(let minutes):
+            if let option = CommunicationIntervalOption(rawValue: minutes) {
+                communicationInterval = option
+            }
+        case let .level(opcode, value):
+            // Only the level the tester is working on; a Get for another family must not clobber the entry.
+            guard let family = opcode.alertLevelKeyPath, family == selectedSpecificOp.alertLevelKeyPath, value.isFinite else { return }
+            alertLevelEntry = value.compactDescription
+        case let .responseCode(request, code):
+            // A new session has a new start time; refresh it so calibrations are stamped against the right one.
+            if request == CGMSpecificOpsOpcode.startSession.rawValue, code == CGMSpecificOpsResponseCode.success.rawValue {
+                readSessionStartTime()
+            }
+        case .calibrationValue:
+            break
         }
     }
 
@@ -503,7 +551,7 @@ class CGMClientViewModel: ObservableObject {
     }
 
     private func send(_ request: CGMRACPRequest) {
-        guard let collector else { return }
+        guard let sensor else { return }
         racpMessage = nil
         // Clear only when opening a fresh report. A report requested mid-transfer is refused by the sensor
         // (Procedure Already In Progress) and must not wipe the one still arriving.
@@ -513,67 +561,154 @@ class CGMClientViewModel: ObservableObject {
             reportedDuplicateCount = 0
             isReportInProgress = true
         }
-        collector.sendRACPRequest(request) { [weak self] message in
-            guard let self else { return }
-            self.racpMessage = (self.racpMessage ?? "") + "\n" + message
-            self.closeReportIfFinished(by: message)
-            // A refusal or lost link ends only the report this request opened.
-            if opensReport, message.contains("error") || message.contains("disconnected") {
-                self.isReportInProgress = false
+        sensor.sendRACPRequest(request) { [weak self] result in
+            self?.onMain { [weak self] in
+                guard let self else { return }
+                racpMessage = (racpMessage ?? "") + "\nRACP " + Self.describe(result)
+                // The completion is the closing Response Code (or the refusal); the records came before it.
+                if opensReport { isReportInProgress = false }
             }
-        }
-    }
-
-    /// The Response Code indication for Report Stored Records (or a successful Abort) closes the report; the
-    /// records arrived before it. It can reach us through the request's completion or, when a later request
-    /// took over that completion, through the indication delegate, so both paths call this.
-    private func closeReportIfFinished(by message: String) {
-        guard message.hasPrefix("RACP") else { return }
-        if message.contains(CGMRACPOpcode.reportStoredRecords.name) || message.contains(CGMRACPOpcode.abortOperation.name) {
-            isReportInProgress = false
         }
     }
 }
 
-extension CGMClientViewModel: PeripheralControllerDelegate {
-    func peripheralDiscovered(sender: PeripheralController, peripheralID: UUID, peripheralName: String, advertisingName: String, serviceData: [CBUUID: Data]?, rssi: NSNumber) {
-        let device = Device(name: peripheralName, uuid: peripheralID.uuidString, advertisedName: advertisingName, rssi: rssi, serviceData: serviceData)
-        // The controller rescans after a disconnect, so the same sensor can be reported again.
-        deviceList.removeAll { $0.uuid == device.uuid }
-        deviceList.append(device)
-        deviceList.sort(by: { $0.rssi.compare($1.rssi) == .orderedDescending })
-    }
+// MARK: - CGMSensorDelegate
 
-    func connectedToPeripheral(sender: PeripheralController) {
-        isPeripheralConnected = true
-        SessionLog.shared.log(.connection, "connected to sensor")
-    }
-
-    func didDisconnectFromPeripheral(sender: PeripheralController) {
-        SessionLog.shared.log(.connection, "disconnected from sensor")
-        connectedMessage = "Currently disconnected"
-        deviceList.removeAll()
-        resetSubscriptions()
-        // Whatever was still being reported is not coming; keep what arrived.
-        isReportInProgress = false
-        consoleMessages = "\(#function) wait for the user to switch back to peripheral view\n" + consoleMessages
-    }
-
-    func characteristicIndicationMessage(_ cbUUID: CBUUID, message: String) {
-        ConsoleOut.shared.logMessage(message: "\(cbUUID) notification/indication: \(message)")
-        switch cbUUID {
-        case CGMCharacteristicUUID.measurement.cbUUID:
-            measurementMessage = message
-        case CGMCharacteristicUUID.feature.cbUUID:
-            // Arrives after discovery (automatic read) and whenever the sensor indicates a change.
-            featureMessage = message
-        case CGMCharacteristicUUID.recordAccessControlPoint.cbUUID:
-            racpMessage = (racpMessage ?? "") + "\n" + message
-            closeReportIfFinished(by: message)
-        case CGMCharacteristicUUID.specificOpsControlPoint.cbUUID:
-            cgmcpMessage = (cgmcpMessage ?? "") + "\n" + message
-        default:
-            consoleMessages = "\(cbUUID): \(message)\n" + consoleMessages
+extension CGMClientViewModel: CGMSensorDelegate {
+    func sensor(_ sensor: CGMSensorComms, didDiscoverSensorWithName name: String?, identifier: UUID, advertisementData: [String: Any], signalStrength: NSNumber) {
+        // A Mac (or any peripheral) may advertise the service without a name the system has cached yet;
+        // dropping it would hide a perfectly connectable sensor. Fall back to the advertised or a placeholder name.
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let device = Device(name: name ?? advertisedName ?? "Unnamed \(identifier.uuidString.prefix(8))",
+                            uuid: identifier.uuidString,
+                            advertisedName: advertisedName ?? "unknown",
+                            rssi: signalStrength,
+                            serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data])
+        onMain {
+            // The service rescans after a disconnect, so the same sensor can be reported again.
+            self.deviceList.removeAll { $0.uuid == device.uuid }
+            self.deviceList.append(device)
+            self.deviceList.sort(by: { $0.rssi.compare($1.rssi) == .orderedDescending })
         }
+    }
+
+    func sensorConnectionStatusChanged(_ sensor: CGMSensorComms) {
+        let isConnected = sensor.isConnected
+        onMain {
+            if isConnected {
+                SessionLog.shared.log(.connection, "connected to sensor")
+                self.isPeripheralConnected = true
+                // BluetoothCommonKit reconnects to the remembered sensor by itself, so this branch also runs
+                // without a tap on the list; the label and the toggles must be restored here, not only on tap.
+                self.connectedMessage = "Disconnect from \(self.connectedDevice?.name ?? "Unknown device")"
+                // Configuration has already subscribed to everything; a failed setup step skips sensorIsReady.
+                self.syncSubscriptions()
+            } else {
+                SessionLog.shared.log(.connection, "disconnected from sensor")
+                self.connectedMessage = "Currently disconnected"
+                self.deviceList.removeAll()
+                self.resetSubscriptions()
+                // Whatever was still being reported is not coming; keep what arrived.
+                self.isReportInProgress = false
+                self.syncSecurityState()
+                self.consoleMessages = "disconnected; BluetoothCommonKit reconnects when the sensor reappears\n" + self.consoleMessages
+            }
+        }
+    }
+
+    func sensorIsReady(_ sensor: CGMSensorComms) {
+        let feature = sensor.feature
+        let startTime = sensor.sessionStartTime
+        onMain {
+            self.syncSubscriptions()
+            self.syncSecurityState()
+            self.featureMessage = feature.map { String(describing: $0) }
+            self.readSessionStartTimeMessage = startTime.map { String(describing: $0) }
+        }
+    }
+
+    func sensorDidCompleteAuthentication(_ sensor: CGMSensorComms, error: DeviceCommError?) {
+        onMain {
+            if let error {
+                self.authorizationMessage = "secure session ended: \(error.localizedDescription)"
+            }
+            self.syncSecurityState()
+        }
+    }
+
+    /// The sensor flipped protection (AC Status) or a key came or went; the Use Secure Channel toggle follows.
+    func sensorDidUpdateSecurity(_ sensor: CGMSensorComms) {
+        onMain {
+            self.authorizationMessage = sensor.usesSecureChannel
+                ? "sensor protects its resources; CGM traffic is on the secure channel"
+                : "sensor serves CGM plainly\(sensor.isSecurityEstablished ? " (key kept for when protection turns on)" : ""); CGM traffic is on the plain characteristics"
+            self.syncSecurityState()
+        }
+    }
+
+    func sensor(_ sensor: CGMSensorComms, didReceiveMeasurements records: [CGMMeasurementRecord]) {
+        onMain {
+            // Every notification is contact with the sensor, even a status-only record identical to the last.
+            self.lastMeasurementReceivedAt = Date()
+            self.measurementMessage = records.map { String(describing: $0) }.joined(separator: "; ")
+            let fresh = self.acceptRecords(records)
+            if self.isReportInProgress {
+                self.reportedRecords.append(contentsOf: fresh)
+                self.reportedDuplicateCount += records.count - fresh.count
+            }
+            // A report can replay history, so only a record at or past the newest offset becomes "last".
+            guard let latest = fresh.max(by: { $0.timeOffset < $1.timeOffset }) else { return }
+            if let last = self.lastMeasurement, latest.timeOffset < last.timeOffset { return }
+            self.lastMeasurement = latest
+        }
+    }
+
+    func sensor(_ sensor: CGMSensorComms, didUpdateFeature feature: CGMFeature) {
+        // Arrives after discovery (automatic read) and whenever the sensor indicates a change.
+        onMain { self.featureMessage = String(describing: feature) }
+    }
+
+    func sensor(_ sensor: CGMSensorComms, didReceiveSpecificOpsResponse response: CGMSpecificOpsResponse) {
+        onMain { self.mirrorSpecificOpsResponse(response) }
+    }
+
+    func sensor(_ sensor: CGMSensorComms, didReceiveRACPResponse response: CGMRACPResponse) {
+        // Normally the request's completion closes the report; this covers a Response Code that arrives
+        // after the sensor refused a later request and the completion is already gone. An Abort closes it
+        // only when it succeeded: after Abort Unsuccessful the records keep coming and still belong to it.
+        guard case let .responseCode(request, code) = response else { return }
+        let closesReport = request == CGMRACPOpcode.reportStoredRecords.rawValue
+            || (request == CGMRACPOpcode.abortOperation.rawValue && code == CGMRACPResponseCode.success.rawValue)
+        guard closesReport else { return }
+        onMain { self.isReportInProgress = false }
+    }
+
+    func sensor(_ sensor: CGMSensorComms, didEncounterError error: DeviceCommError, forCharacteristic uuid: CBUUID?) {
+        onMain { self.consoleMessages = "\(uuid?.uuidString ?? "sensor"): \(error.localizedDescription)\n" + self.consoleMessages }
+    }
+
+    func sensorDidUpdateState(_ sensor: CGMSensorComms) { }
+}
+
+// MARK: - DeviceCommLoggingDelegate
+
+/// The kit's client logs through this; the shared console forwards to the session log.
+extension CGMClientViewModel: DeviceCommLoggingDelegate {
+    func logConnectionEvent(function: StaticString, _ message: String) {
+        ConsoleOut.shared.logMessage(message: "collector connection \(function) \(message)")
+    }
+
+    func logSendEvent(function: StaticString, _ message: String) {
+        ConsoleOut.shared.logMessage(message: "collector \(function) \(message)")
+    }
+
+    func logReceiveEvent(function: StaticString, _ message: String) {
+        ConsoleOut.shared.logMessage(message: "collector received \(message)")
+        onMain { self.consoleMessages = "\(message)\n" + self.consoleMessages }
+    }
+
+    func logErrorEvent(function: StaticString, _ message: String) {
+        ConsoleOut.shared.logMessage(message: "collector error \(function) \(message)")
+        onMain { self.consoleMessages = "error: \(message)\n" + self.consoleMessages }
     }
 }

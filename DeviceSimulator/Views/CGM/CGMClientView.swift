@@ -42,7 +42,8 @@ struct CGMClientView: View {
 
     private var connectionCard: some View {
         RoundedCard {
-            Button(action: viewModel.stopClient) {
+            // Disconnect forgets the sensor and goes back to scanning; stopClient is for leaving the screen.
+            Button(action: viewModel.disconnect) {
                 Text(viewModel.connectedMessage)
                 Spacer()
             }

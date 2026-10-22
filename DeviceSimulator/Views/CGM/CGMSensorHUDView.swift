@@ -76,6 +76,53 @@ struct CGMSensorHUDView: View {
             }
         }
         .frame(maxWidth: .infinity)
+        // Icon only, in the slack above the digits, so it costs no height and misses the trend arrow.
+        .overlay(alignment: .topTrailing) { securityBadge }
+    }
+
+    // MARK: Security
+
+    /// Whether a collector holds the session key: closed green lock when it does, whatever the Required toggle
+    /// says (the ACS service is always published, the toggle only gates plain access). Otherwise an open lock,
+    /// orange when protection is required and nobody has paired, gray when it is not required. Tapping it
+    /// flips Required on the sensor, the same toggle as on the configuration page.
+    private var securityBadge: some View {
+        Button {
+            viewModel.isAuthorizationControlEnabled.toggle()
+        } label: {
+            VStack(spacing: 2) {
+                Image(systemName: securitySymbol)
+                    .font(.title3.weight(.semibold))
+                Text(viewModel.isAuthorizationControlEnabled ? "required" : "optional")
+                    .font(.caption2)
+            }
+            .foregroundStyle(securityTint)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .background(securityTint.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(securityLabel)
+        .accessibilityHint("Toggles whether the sensor requires Authorization Control")
+    }
+
+    private var securitySymbol: String {
+        viewModel.isSecurityEstablished ? "lock.fill" : "lock.open.fill"
+    }
+
+    private var securityTint: Color {
+        if viewModel.isSecurityEstablished { return .green }
+        return viewModel.isAuthorizationControlEnabled ? .orange : .gray
+    }
+
+    private var securityLabel: String {
+        if viewModel.isSecurityEstablished { return "Secure session established" }
+        return viewModel.isAuthorizationControlEnabled ? "Secure session required, not established" : "Secure session not established"
+    }
+
+    private var securityChipValue: String {
+        if viewModel.isSecurityEstablished { return "established" }
+        return viewModel.isAuthorizationControlEnabled ? "required" : "not established"
     }
 
     /// Three dashes is Tidepool's placeholder for no reading.
@@ -136,13 +183,33 @@ struct CGMSensorHUDView: View {
             chipRow {
                 chip("Calibration", calibrationChipValue, tint: viewModel.calibrationStatusString == "none" ? .gray : .yellow)
                 chip("Collectors", "\(viewModel.numberOfSubscribedDevices)", tint: viewModel.numberOfSubscribedDevices > 0 ? .blue : .gray)
-                chip("Secure", viewModel.isAuthorizationControlEnabled ? (viewModel.isSecurityEstablished ? "established" : "required") : "off", tint: viewModel.isSecurityEstablished ? .green : .gray)
+                chip("Secure", securityChipValue, tint: securityTint)
             }
             // Hidden until an alert bit is set, then a full-width red chip so it cannot be missed.
             if !alertBitNames.isEmpty {
                 chip(alertBitNames.count == 1 ? "Alert" : "Alerts", alertBitNames.joined(separator: ", "), tint: .red)
             }
+            sensorKeyRow
         }
+    }
+
+    /// The OOB number a collector must enter for the key exchange, readable across the room like the glucose.
+    private var sensorKeyRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "key.fill")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Sensor key")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Text(viewModel.oobRandomNumberString.isEmpty ? "---" : viewModel.oobRandomNumberString)
+                .font(.footnote.weight(.semibold))
+                .monospaced()
+                .textSelection(.enabled)
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
     }
 
     /// Status bits the chips do not already show: alert levels, range, battery, time sync and the like.

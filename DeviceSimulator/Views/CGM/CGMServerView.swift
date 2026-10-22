@@ -391,6 +391,9 @@ struct CGMServerView_Previews: PreviewProvider {
             CGMReadingPoint(id: index, timeOffset: offset, glucose: 112 + Double(offset) * 0.8)
         }
         viewModel.nextMeasurementDate = Date().addingTimeInterval(137)
+        viewModel.isAuthorizationControlEnabled = true   // so the HUD's lock badge renders its established state
+        viewModel.isSecurityEstablished = true
+        viewModel.oobRandomNumberString = CGMConstants.oobRandomNumber
         return viewModel
     }
 }
