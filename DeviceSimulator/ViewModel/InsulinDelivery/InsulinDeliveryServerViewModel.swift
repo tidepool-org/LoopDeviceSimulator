@@ -52,13 +52,19 @@ class InsulinDeliveryServerViewModel {
             mockInsulinDeliveryPump?.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         }
     }
-    var isAuthorizationControlEnabled = false {
+    /// Kept across relaunches with the pairing, so the pump comes back gated the way Loop last saw it.
+    var isAuthorizationControlEnabled = ServerSecurityStore.shared.isAuthorizationControlEnabled(for: .pump) {
         didSet {
-            if oldValue != isAuthorizationControlEnabled { stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")") }
+            if oldValue != isAuthorizationControlEnabled {
+                stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")")
+                securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .pump)
+            }
             mockInsulinDeliveryPump?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
-    
+    /// Mirrors AC Status: true while the pump holds a confirmed session key.
+    var isSecurityEstablished = false
+
     @ObservationIgnored var oobRandomNumberString: String {
         guard let oobString = mockInsulinDeliveryPump?.securityManager.configuration.oobRandomNumber else {
             return "Unknown"
@@ -76,6 +82,7 @@ class InsulinDeliveryServerViewModel {
     var bolusDeliveryString: String = ""
     
     @ObservationIgnored private var serverName: String?
+    @ObservationIgnored private let securityStore = ServerSecurityStore.shared
 
     /// True while the pump's state is being mirrored into these properties (delegate updates, stop), so the
     /// didSet handlers do not log the pump's own defaults or a teardown reset as something the tester did.
@@ -98,9 +105,13 @@ class InsulinDeliveryServerViewModel {
         self.server?.delegate = self
 
         let messageQueue = MessageQueue(gattService: server)
-        mockInsulinDeliveryPump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
-        mockInsulinDeliveryPump?.delegate = self
-        mockPumpDidUpdate(mockInsulinDeliveryPump!)
+        let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
+        // The ACS gate and any stored pairing are back before the first collector packet (HYDRA-9).
+        pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
+        restoreSecurity(on: pump)
+        pump.delegate = self
+        mockInsulinDeliveryPump = pump
+        mockPumpDidUpdate(pump)
         SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName)")
     }
 
@@ -184,6 +195,32 @@ extension InsulinDeliveryServerViewModel {
         let message = "This is a secure indication".data(using: .utf8)!
         mockInsulinDeliveryPump?.sendSecureIndication(message, to: 1)
     }
+
+    /// Drops the stored pairing so the next collector starts a fresh key exchange; Loop's own copy of the
+    /// key is untouched, so it has to invalidate or re-pair on its side.
+    func forgetPairing() {
+        stimulus("Forget Pairing")
+        if let pump = mockInsulinDeliveryPump {
+            pump.invalidateKey()
+            pump.sharedKeyData = nil   // kits before the invalidateKey fix leave an empty key behind
+            mockPumpDidUpdate(pump)
+        }
+        securityStore.forget(.pump)
+        SessionLog.shared.log(.lifecycle, "pump pairing forgotten")
+    }
+
+    /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh pump.
+    private func restoreSecurity(on pump: MockInsulinDeliveryPump) {
+        guard let stored = securityStore.load(.pump) else { return }
+        pump.securityManager.configuration = stored.configuration
+        pump.sharedKeyData = stored.sharedKeyData
+        pump.authorizationStatusCharacteristic.isSecurityEstablished = stored.isSecurityEstablished
+        SessionLog.shared.log(.lifecycle, "pump security restored: \(stored.isSecurityEstablished ? "secure session established" : "no session key")")
+    }
+
+    private func persistSecurity(from pump: MockInsulinDeliveryPump) {
+        securityStore.save(ServerSecurityState(configuration: pump.securityManager.configuration, sharedKeyData: pump.sharedKeyData), for: .pump)
+    }
 }
 
 // MARK: - E2E Protection Delegate
@@ -213,6 +250,8 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         operationalStateString = String(describing: pump.operationalState)
         isPumpBehaviourEnabled = pump.isPumpBehaviourEnabled
         isAuthorizationControlEnabled = pump.isAuthorizationControlEnabled
+        isSecurityEstablished = pump.authorizationStatusCharacteristic.isSecurityEstablished
+        persistSecurity(from: pump)
         let formatter = NumberFormatter()
         formatter.maximumFractionDigits = 2
         reservoirLevelString = String(describing: formatter.string(from: pump.reservoirRemaining)!)

@@ -211,10 +211,12 @@ class CGMServerViewModel {
 
     /// ACS gate: when on, the CGM characteristics are protected resources and the collector must complete
     /// the key exchange and use AC Data In / Out. Flips live on the sensor; survives a restart.
-    var isAuthorizationControlEnabled = false {
+    var isAuthorizationControlEnabled = ServerSecurityStore.shared.isAuthorizationControlEnabled(for: .cgm) {
         didSet {
             guard oldValue != isAuthorizationControlEnabled else { return }
             stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")")
+            // Kept across relaunches with the pairing, so the sensor comes back gated the way Loop last saw it.
+            securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .cgm)
             sensor?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
@@ -366,6 +368,7 @@ class CGMServerViewModel {
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
+    @ObservationIgnored private let securityStore = ServerSecurityStore.shared
 
     func startServer(serverName: String? = nil) {
         if server != nil {
@@ -408,6 +411,7 @@ class CGMServerViewModel {
         sensor.clockOffset = preservedClockOffset
         sensor.pendingIntegrityFault = preservedIntegrityFault   // a fault armed while powered off or across a restart
         preservedIntegrityFault = nil
+        restoreSecurity(on: sensor)   // before the first collector packet (HYDRA-9)
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -874,6 +878,32 @@ extension CGMServerViewModel: GATTServiceDelegate {
     }
 }
 
+// MARK: - Authorization Control
+
+extension CGMServerViewModel {
+    /// Drops the stored pairing so the next collector starts a fresh key exchange; Loop's own copy of the
+    /// key is untouched, so it has to invalidate or re-pair on its side.
+    func forgetPairing() {
+        stimulus("Forget Pairing")
+        sensor?.invalidateKey()   // drops the key, resets the nonce sequence, indicates AC Status
+        securityStore.forget(.cgm)
+        SessionLog.shared.log(.lifecycle, "CGM pairing forgotten")
+    }
+
+    /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh sensor.
+    private func restoreSecurity(on sensor: MockCGMSensor) {
+        guard let stored = securityStore.load(.cgm) else { return }
+        sensor.securityManager.configuration = stored.configuration
+        sensor.sharedKeyData = stored.sharedKeyData
+        sensor.authorizationStatusCharacteristic.isSecurityEstablished = stored.isSecurityEstablished
+        SessionLog.shared.log(.lifecycle, "CGM security restored: \(stored.isSecurityEstablished ? "secure session established" : "no session key")")
+    }
+
+    private func persistSecurity(from sensor: MockCGMSensor) {
+        securityStore.save(ServerSecurityState(configuration: sensor.securityManager.configuration, sharedKeyData: sensor.sharedKeyData), for: .cgm)
+    }
+}
+
 // MARK: - Mock Sensor Delegate
 
 extension CGMServerViewModel: MockCGMSensorDelegate {
@@ -934,5 +964,6 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         isAuthorizationControlEnabled = sensor.isAuthorizationControlEnabled
         isSecurityEstablished = sensor.isSecurityEstablished
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""
+        persistSecurity(from: sensor)
     }
 }
