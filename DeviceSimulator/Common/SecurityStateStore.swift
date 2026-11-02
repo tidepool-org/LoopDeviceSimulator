@@ -32,6 +32,7 @@ final class SecurityStateStore {
         case pumpServer
         case cgmServer
         case authorizationControlClient
+        case cgmClient
     }
 
     static let shared = SecurityStateStore()

@@ -17,6 +17,7 @@ import ContinuousGlucoseMonitorServiceKit
 class CGMClientViewModel: ObservableObject {
 
     private var sensor: ContinuousGlucoseMonitorService?
+    private let securityStore = SecurityStateStore.shared
 
     @Published var deviceList: [Device] = []
     @Published var connectedDevice: Device? = nil {
@@ -117,6 +118,29 @@ class CGMClientViewModel: ObservableObject {
         isSecurityEstablished = sensor?.isSecurityEstablished ?? false
         usesSecureChannel = sensor?.usesSecureChannel ?? false
         isSyncingSecurity = false
+        persistSecurity()
+    }
+
+    /// Drops the stored pairing on this side only; the sensor keeps its key until it receives Invalidate Key.
+    func forgetPairing() {
+        SessionLog.shared.stimulus("Forget Stored Pairing")
+        sensor?.deleteStoredKey()
+        usesSecureChannel = false
+        authorizationMessage = "stored pairing forgotten; the next connection runs a full key exchange"
+        syncSecurityState()
+        securityStore.forget(.cgmClient)
+        SessionLog.shared.log(.lifecycle, "collector pairing forgotten")
+    }
+
+    /// The service's state carries the security manager configuration (incl. the nonce sequence number) and
+    /// the handle map; the key sits beside it. Saved on every state change, diffed by the store (HYDRA-9).
+    private func persistSecurity() {
+        guard let sensor else { return }
+        let state = sensor.state
+        securityStore.save(SecurityState(configuration: state.securityManagerConfiguration,
+                                         sharedKeyData: sensor.sharedKeyData,
+                                         uuidToHandleMap: state.uuidToHandleMap),
+                           for: .cgmClient)
     }
 
     // MARK: - Last measurement
@@ -216,13 +240,27 @@ class CGMClientViewModel: ObservableObject {
         SessionLog.shared.log(.lifecycle, "CGM collector client started")
         // A read that was in flight when the last client was torn down may have completed late; start clean.
         reset()
-        // No background mode in the simulator, so no state restoration.
-        let sensor = ContinuousGlucoseMonitorService(restoreOptions: nil)
+        // Only the pairing comes back, not the sensor identity: the tester still picks from the list, and the
+        // kit skips the key exchange when the chosen sensor still holds this key. No background mode in the
+        // simulator, so no CoreBluetooth state restoration.
+        let stored = securityStore.load(.cgmClient)
+        var state = CGMSensorState()
+        if let stored {
+            state.securityManagerConfiguration = stored.configuration
+            state.uuidToHandleMap = stored.uuidToHandleMap
+            if let oobString = String(data: stored.configuration.oobRandomNumber, encoding: .utf8), !oobString.isEmpty {
+                sensorKeyEntry = oobString
+            }
+            SessionLog.shared.log(.lifecycle, "collector security restored: \(stored.isSecurityEstablished ? "secure session established" : "no session key")")
+        }
+        let sensor = ContinuousGlucoseMonitorService(state: state, restoreOptions: nil)
+        sensor.sharedKeyData = stored?.sharedKeyData
         sensor.delegate = self
         sensor.loggingDelegate = self
         // The key the tester sees is the key the automatic exchange uses, including an edited one.
         sensor.setOOBString(effectiveSensorKey)
         self.sensor = sensor
+        syncSecurityState()
         sensor.scanForSensors()
     }
 
@@ -237,6 +275,7 @@ class CGMClientViewModel: ObservableObject {
     func stopClient() {
         SessionLog.shared.log(.lifecycle, "CGM collector client stopped")
         defer { SessionLog.shared.context = SessionLog.Context() }   // after the disconnect lines are out
+        persistSecurity()   // deactivation drops the service's key; the stored pairing outlives the view
         sensor?.delegate = nil
         sensor?.loggingDelegate = nil   // a read still in flight must not write into the cleared console
         sensor?.prepareForDeactivation()
@@ -687,7 +726,11 @@ extension CGMClientViewModel: CGMSensorDelegate {
         onMain { self.consoleMessages = "\(uuid?.uuidString ?? "sensor"): \(error.localizedDescription)\n" + self.consoleMessages }
     }
 
-    func sensorDidUpdateState(_ sensor: CGMSensorComms) { }
+    /// Every nonce step lands here (the sequence number lives in the state), so the stored pairing never
+    /// reuses a nonce after a relaunch.
+    func sensorDidUpdateState(_ sensor: CGMSensorComms) {
+        persistSecurity()
+    }
 }
 
 // MARK: - DeviceCommLoggingDelegate
