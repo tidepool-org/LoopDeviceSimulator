@@ -75,7 +75,7 @@ struct CGMClientView: View {
     /// ACS: run the key exchange, then route CGM traffic through AC Data In / Out. Needed whenever the
     /// sensor's Authorization Control toggle is on; harmless otherwise.
     private var authorizationCard: some View {
-        RoundedCard(title: "Authorization Control (ACS)", footer: "With Authorization Control on, the sensor answers Insufficient Authorization on the plain CGM characteristics until the key exchange completes. Measurements then arrive encrypted on AC Data Out. The sensor key must match the one shown on the sensor (default \(CGMConstants.oobRandomNumber)); a different key makes the confirmation fail.") {
+        RoundedCard(title: "Authorization Control (ACS)", footer: "With Authorization Control on, the sensor answers Insufficient Authorization on the plain CGM characteristics until the key exchange completes. Measurements then arrive encrypted on AC Data Out. The sensor key must match the one shown on the sensor (default \(CGMConstants.oobRandomNumber)); a different key makes the confirmation fail. The session key and its nonce sequence are kept across link losses and relaunches; Forget Stored Pairing drops this side's copy only.") {
             RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
             textRow("Sensor Key", text: $viewModel.sensorKeyEntry)
             Toggle("Use Secure Channel", isOn: $viewModel.usesSecureChannel)
@@ -88,6 +88,8 @@ struct CGMClientView: View {
                     .disabled(!viewModel.isSecurityEstablished)
             }
             .padding(.vertical, 4)
+            Button("Forget Stored Pairing", action: viewModel.forgetPairing)
+                .padding(.vertical, 4)
             if let message = viewModel.authorizationMessage {
                 MessageView(message: message)
             }

@@ -13,6 +13,7 @@ import BluetoothCommonKit
 class AuthorizationControlClientViewModel: ObservableObject {
 
     private var authorizationControlController: AuthorizationControlController?
+    private let securityStore = SecurityStateStore.shared
 
     @Published var deviceList: [Device] = []
     
@@ -25,7 +26,10 @@ class AuthorizationControlClientViewModel: ObservableObject {
     @Published var connectedMessage: String = "Currently Disconnected"
     
     @Published var isPeripheralConnected: Bool = false
-    
+
+    /// True while this client holds a confirmed session key (kept across relaunches, HYDRA-9).
+    @Published var isSecurityEstablished: Bool = false
+
     @Published var ecdhKeyIDString: String = "1" {
         didSet {
             authorizationControlController?.securityManager.configuration.ecdhKeyID = ecdhKeyID
@@ -120,15 +124,32 @@ class AuthorizationControlClientViewModel: ObservableObject {
     func startClient() {
         SessionLog.shared.context = SessionLog.Context(mode: .acs, role: .client)
         SessionLog.shared.log(.lifecycle, "authorization control client started")
-        authorizationControlController = AuthorizationControlController()
-        authorizationControlController?.delegate = self
-        if let ecdhKeyID = authorizationControlController?.securityManager.configuration.ecdhKeyID {
-            self.ecdhKeyIDString = "\(ecdhKeyID)"
+        let controller = AuthorizationControlController()
+        authorizationControlController = controller
+        controller.delegate = self
+        // A stored pairing comes back before any request; its OOB number replaces the entry's default.
+        if let stored = securityStore.load(.authorizationControlClient) {
+            controller.securityManager.configuration = stored.configuration
+            controller.sharedKeyData = stored.sharedKeyData
+            controller.uuidToHandleMap = stored.uuidToHandleMap
+            if let oobString = String(data: stored.configuration.oobRandomNumber, encoding: .utf8) {
+                oobRandomNumberString = oobString
+            }
+            SessionLog.shared.log(.lifecycle, "client security restored: \(stored.isSecurityEstablished ? "secure session established" : "no session key")")
+        } else {
+            controller.securityManager.configuration.oobRandomNumber = oobRandomNumber
         }
-        if let algorithmKeyID = authorizationControlController?.securityManager.configuration.algorithmKeyID {
-            self.algorithmKeyIDString = "\(algorithmKeyID)"
-        }
-        authorizationControlController?.securityManager.configuration.oobRandomNumber = oobRandomNumber
+        ecdhKeyIDString = "\(controller.securityManager.configuration.ecdhKeyID)"
+        algorithmKeyIDString = "\(controller.securityManager.configuration.algorithmKeyID)"
+        securityStateDidChange(sender: controller)
+    }
+
+    /// Drops the stored pairing on this side only; the server keeps its key until it receives Invalidate Key.
+    func forgetPairing() {
+        SessionLog.shared.stimulus("Forget Pairing")
+        authorizationControlController?.forgetSecurity()   // reported back through securityStateDidChange
+        securityStore.forget(.authorizationControlClient)
+        SessionLog.shared.log(.lifecycle, "client pairing forgotten")
     }
 
     func stopClient() {
@@ -221,6 +242,14 @@ extension AuthorizationControlClientViewModel: AuthorizationControlControllerDel
         if cbUUID == ACCharacteristicUUID.status.cbUUID {
             indicationsMessageStatus = message
         }
+    }
+
+    func securityStateDidChange(sender: AuthorizationControlController) {
+        isSecurityEstablished = sender.securityManager.applicationSecurityEstablished
+        securityStore.save(SecurityState(configuration: sender.securityManager.configuration,
+                                         sharedKeyData: sender.sharedKeyData,
+                                         uuidToHandleMap: sender.uuidToHandleMap),
+                           for: .authorizationControlClient)
     }
 }
 

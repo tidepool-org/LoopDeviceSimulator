@@ -198,6 +198,16 @@ struct AuthorizationControlClientView: View {
             if let message = viewModel.invalidateKeyMessage {
                 MessageView(message: message)
             }
+            Divider()
+            // The key, nonce sequence and handle map survive relaunches (HYDRA-9); this drops the local copy only.
+            HStack {
+                Text("Secure Session")
+                Spacer()
+                Text(viewModel.isSecurityEstablished ? "established" : "not established")
+            }
+            Button(action: viewModel.forgetPairing) {
+                Text("Forget Stored Pairing")
+            }
         }
     }
     

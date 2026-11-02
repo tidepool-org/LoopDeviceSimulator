@@ -311,7 +311,7 @@ struct CGMServerView: View {
     }
 
     private var serverCard: some View {
-        RoundedCard(title: "Server") {
+        RoundedCard(title: "Server", footer: "The ACS session key, its nonce sequence and the Required toggle are kept across relaunches and while the pump server runs, so a collector can come back to either device without a new key exchange. Forget Pairing drops the key and configuration on this side only.") {
             Button(action: viewModel.restartServer) {
                 Text("Restart Server")
             }
@@ -324,6 +324,8 @@ struct CGMServerView: View {
             RoundedCardToggleRow(label: "Authorization Control (ACS) Required", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
             RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
             RoundedCardValueRow(label: "Sensor Key", value: viewModel.oobRandomNumberString)
+            Button("Forget Pairing", action: viewModel.forgetPairing)
+                .padding(.vertical, 4)
         }
     }
 
