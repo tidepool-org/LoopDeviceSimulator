@@ -15,6 +15,9 @@ protocol AuthorizationControlControllerDelegate: AnyObject {
     func connectedToPeripheral(sender: AuthorizationControlController)
     func didDisconnectFromPeripheral(sender: AuthorizationControlController)
     func characteristicIndicationMessage(_ cbUUID: CBUUID, message: String)
+    /// The session key, the resource handle map or the security manager configuration (incl. the nonce
+    /// sequence number) changed; the host persists them (HYDRA-9).
+    func securityStateDidChange(sender: AuthorizationControlController)
 }
 
 public class AuthorizationControlController: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -29,9 +32,19 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
     let data: ACDataDataHandler
     let maxRequestSize = 19
     let securityManager: SecurityManager
-    public var sharedKeyData: Data?
-    var uuidToHandleMap: [CBUUID: ResourceHandle] = [:]
-    
+    public var sharedKeyData: Data? {
+        didSet {
+            guard oldValue != sharedKeyData else { return }
+            delegate?.securityStateDidChange(sender: self)
+        }
+    }
+    var uuidToHandleMap: [CBUUID: ResourceHandle] = [:] {
+        didSet {
+            guard oldValue != uuidToHandleMap else { return }
+            delegate?.securityStateDidChange(sender: self)
+        }
+    }
+
     override init() {
         securityManager = SecurityManager()
         controlPoint = ACControlPointDataHandler(securityManager: securityManager, maxRequestSize: maxRequestSize)
@@ -416,9 +429,18 @@ extension AuthorizationControlController {
 extension AuthorizationControlController: SecurityManagerDelegate {
     public func securityManagerDidEstablishedSecurity(_ securityManager: BluetoothCommonKit.SecurityManager) {
         print("security was established")
+        delegate?.securityStateDidChange(sender: self)
     }
-    
+
     public func securityManagerDidUpdateConfiguration(_ securityManager: BluetoothCommonKit.SecurityManager) {
-        // nop
+        // Every nonce step lands here; the host persists the configuration so a relaunch never reuses a nonce.
+        delegate?.securityStateDidChange(sender: self)
+    }
+
+    /// Drops the local key, nonce sequence and handle map without telling the server; Invalidate Key is the
+    /// request that asks the server to do the same.
+    func forgetSecurity() {
+        securityManager.prepareForDeactivation()
+        uuidToHandleMap = [:]
     }
 }

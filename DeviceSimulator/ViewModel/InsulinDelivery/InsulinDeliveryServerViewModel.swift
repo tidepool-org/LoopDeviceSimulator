@@ -53,11 +53,11 @@ class InsulinDeliveryServerViewModel {
         }
     }
     /// Kept across relaunches with the pairing, so the pump comes back gated the way Loop last saw it.
-    var isAuthorizationControlEnabled = ServerSecurityStore.shared.isAuthorizationControlEnabled(for: .pump) {
+    var isAuthorizationControlEnabled = SecurityStateStore.shared.isAuthorizationControlEnabled(for: .pumpServer) {
         didSet {
             if oldValue != isAuthorizationControlEnabled {
                 stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")")
-                securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .pump)
+                securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .pumpServer)
             }
             mockInsulinDeliveryPump?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
@@ -82,7 +82,7 @@ class InsulinDeliveryServerViewModel {
     var bolusDeliveryString: String = ""
     
     @ObservationIgnored private var serverName: String?
-    @ObservationIgnored private let securityStore = ServerSecurityStore.shared
+    @ObservationIgnored private let securityStore = SecurityStateStore.shared
 
     /// True while the pump's state is being mirrored into these properties (delegate updates, stop), so the
     /// didSet handlers do not log the pump's own defaults or a teardown reset as something the tester did.
@@ -205,13 +205,13 @@ extension InsulinDeliveryServerViewModel {
             pump.sharedKeyData = nil   // kits before the invalidateKey fix leave an empty key behind
             mockPumpDidUpdate(pump)
         }
-        securityStore.forget(.pump)
+        securityStore.forget(.pumpServer)
         SessionLog.shared.log(.lifecycle, "pump pairing forgotten")
     }
 
     /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh pump.
     private func restoreSecurity(on pump: MockInsulinDeliveryPump) {
-        guard let stored = securityStore.load(.pump) else { return }
+        guard let stored = securityStore.load(.pumpServer) else { return }
         pump.securityManager.configuration = stored.configuration
         pump.sharedKeyData = stored.sharedKeyData
         pump.authorizationStatusCharacteristic.isSecurityEstablished = stored.isSecurityEstablished
@@ -219,7 +219,7 @@ extension InsulinDeliveryServerViewModel {
     }
 
     private func persistSecurity(from pump: MockInsulinDeliveryPump) {
-        securityStore.save(ServerSecurityState(configuration: pump.securityManager.configuration, sharedKeyData: pump.sharedKeyData), for: .pump)
+        securityStore.save(SecurityState(configuration: pump.securityManager.configuration, sharedKeyData: pump.sharedKeyData), for: .pumpServer)
     }
 }
 

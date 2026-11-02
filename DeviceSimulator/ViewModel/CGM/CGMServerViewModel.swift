@@ -211,12 +211,12 @@ class CGMServerViewModel {
 
     /// ACS gate: when on, the CGM characteristics are protected resources and the collector must complete
     /// the key exchange and use AC Data In / Out. Flips live on the sensor; survives a restart.
-    var isAuthorizationControlEnabled = ServerSecurityStore.shared.isAuthorizationControlEnabled(for: .cgm) {
+    var isAuthorizationControlEnabled = SecurityStateStore.shared.isAuthorizationControlEnabled(for: .cgmServer) {
         didSet {
             guard oldValue != isAuthorizationControlEnabled else { return }
             stimulus("Authorization Control → \(isAuthorizationControlEnabled ? "on" : "off")")
             // Kept across relaunches with the pairing, so the sensor comes back gated the way Loop last saw it.
-            securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .cgm)
+            securityStore.setAuthorizationControlEnabled(isAuthorizationControlEnabled, for: .cgmServer)
             sensor?.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         }
     }
@@ -368,7 +368,7 @@ class CGMServerViewModel {
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
-    @ObservationIgnored private let securityStore = ServerSecurityStore.shared
+    @ObservationIgnored private let securityStore = SecurityStateStore.shared
 
     func startServer(serverName: String? = nil) {
         if server != nil {
@@ -886,13 +886,13 @@ extension CGMServerViewModel {
     func forgetPairing() {
         stimulus("Forget Pairing")
         sensor?.invalidateKey()   // drops the key, resets the nonce sequence, indicates AC Status
-        securityStore.forget(.cgm)
+        securityStore.forget(.cgmServer)
         SessionLog.shared.log(.lifecycle, "CGM pairing forgotten")
     }
 
     /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh sensor.
     private func restoreSecurity(on sensor: MockCGMSensor) {
-        guard let stored = securityStore.load(.cgm) else { return }
+        guard let stored = securityStore.load(.cgmServer) else { return }
         sensor.securityManager.configuration = stored.configuration
         sensor.sharedKeyData = stored.sharedKeyData
         sensor.authorizationStatusCharacteristic.isSecurityEstablished = stored.isSecurityEstablished
@@ -900,7 +900,7 @@ extension CGMServerViewModel {
     }
 
     private func persistSecurity(from sensor: MockCGMSensor) {
-        securityStore.save(ServerSecurityState(configuration: sensor.securityManager.configuration, sharedKeyData: sensor.sharedKeyData), for: .cgm)
+        securityStore.save(SecurityState(configuration: sensor.securityManager.configuration, sharedKeyData: sensor.sharedKeyData), for: .cgmServer)
     }
 }
 
