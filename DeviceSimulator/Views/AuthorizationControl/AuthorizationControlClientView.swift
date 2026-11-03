@@ -199,7 +199,7 @@ struct AuthorizationControlClientView: View {
                 MessageView(message: message)
             }
             Divider()
-            // The key, nonce sequence and handle map survive relaunches (HYDRA-9); this drops the local copy only.
+            // The key, nonce sequence and handle map survive relaunches; this drops the local copy only.
             HStack {
                 Text("Secure Session")
                 Spacer()

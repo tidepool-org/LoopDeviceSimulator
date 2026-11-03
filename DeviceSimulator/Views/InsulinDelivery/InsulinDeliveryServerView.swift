@@ -75,7 +75,7 @@ struct InsulinDeliveryServerView: View {
                 RoundedCardToggleRow(label: "Authorization Control Required", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
                 RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
                 RoundedCardValueRow(label: "Pump Key", value: viewModel.oobRandomNumberString)
-                // The session key and nonce sequence survive relaunches and switching to the CGM server (HYDRA-9).
+                // The session key and nonce sequence survive relaunches and switching to the CGM server.
                 Button(action: viewModel.forgetPairing) {
                     Text("Forget Pairing")
                 }

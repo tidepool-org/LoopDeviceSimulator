@@ -83,6 +83,7 @@ class InsulinDeliveryServerViewModel {
     
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
+    @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
 
     /// True while the pump's state is being mirrored into these properties (delegate updates, stop), so the
     /// didSet handlers do not log the pump's own defaults or a teardown reset as something the tester did.
@@ -106,9 +107,10 @@ class InsulinDeliveryServerViewModel {
 
         let messageQueue = MessageQueue(gattService: server)
         let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
-        // The ACS gate and any stored pairing are back before the first collector packet (HYDRA-9).
+        // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         restoreSecurity(on: pump)
+        restoreHistory(on: pump)   // before the delegate, so the restore itself is not persisted half-way
         pump.delegate = self
         mockInsulinDeliveryPump = pump
         mockPumpDidUpdate(pump)
@@ -122,7 +124,10 @@ class InsulinDeliveryServerViewModel {
             isMirroring = false
             SessionLog.shared.context = SessionLog.Context()
         }
-        if mockInsulinDeliveryPump != nil { SessionLog.shared.log(.lifecycle, "pump server stopped") }
+        if let pump = mockInsulinDeliveryPump {
+            SessionLog.shared.log(.lifecycle, "pump server stopped")
+            persistHistory(from: pump)
+        }
         server?.disconnect()
         server = nil
         mockInsulinDeliveryPump = nil
@@ -200,13 +205,29 @@ extension InsulinDeliveryServerViewModel {
     /// key is untouched, so it has to invalidate or re-pair on its side.
     func forgetPairing() {
         stimulus("Forget Pairing")
+        securityStore.forget(.pumpServer)
+        // The history lives as long as the pairing: a forgotten pump starts over with a fresh
+        // Reference Time event, which the delegate persists as the new file.
+        historyStore.forget(.pumpServer)
         if let pump = mockInsulinDeliveryPump {
             pump.invalidateKey()
             pump.sharedKeyData = nil   // kits before the invalidateKey fix leave an empty key behind
+            pump.recordAccessControlPoint.clearHistory()
             mockPumpDidUpdate(pump)
         }
-        securityStore.forget(.pumpServer)
-        SessionLog.shared.log(.lifecycle, "pump pairing forgotten")
+        SessionLog.shared.log(.lifecycle, "pump pairing and history forgotten")
+    }
+
+    /// Puts the persisted history events back on a fresh pump; with nothing stored the kit's
+    /// built-in sample history stays.
+    private func restoreHistory(on pump: MockInsulinDeliveryPump) {
+        guard let stored = historyStore.load(PumpHistorySnapshot.self, for: .pumpServer) else { return }
+        pump.recordAccessControlPoint.restoreHistory(stored)
+        SessionLog.shared.log(.lifecycle, "pump history restored: \(stored.events.count) events, next record number \(pump.recordAccessControlPoint.historySnapshot.nextRecordNumber)")
+    }
+
+    private func persistHistory(from pump: MockInsulinDeliveryPump) {
+        historyStore.save(pump.recordAccessControlPoint.historySnapshot, for: .pumpServer)
     }
 
     /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh pump.
@@ -252,6 +273,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         isAuthorizationControlEnabled = pump.isAuthorizationControlEnabled
         isSecurityEstablished = pump.authorizationStatusCharacteristic.isSecurityEstablished
         persistSecurity(from: pump)
+        persistHistory(from: pump)
         let formatter = NumberFormatter()
         formatter.maximumFractionDigits = 2
         reservoirLevelString = String(describing: formatter.string(from: pump.reservoirRemaining)!)

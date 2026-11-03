@@ -216,7 +216,7 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
             RoundedCardValueRow(label: "Session Run Time", value: viewModel.sessionRunTimeString)
-            // HYD-C-015/016: the clock the next Session Start Time is written in (host clock plus the skew).
+            // The clock the next Session Start Time is written in (host clock plus the skew).
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 RoundedCardValueRow(label: "Sensor Clock", value: deviceClockText(now: context.date))
             }
@@ -246,7 +246,7 @@ struct CGMServerView: View {
         }
     }
 
-    /// Warm-up, sensor condition and range (CGM-DESIGN §Lifecycle; TBD-03/05/07, HYD-G-003/006).
+    /// Warm-up, sensor condition and range (CGM-DESIGN §Lifecycle).
     private var lifecycleCard: some View {
         RoundedCard(title: "Sensor Lifecycle", footer: "Warm-up applies to the next session and can be changed while one is in progress. Replace Sensor starts a fresh session with empty records and calibrations and clears any failure. Fail Sensor stops readings and sets Sensor Malfunction until the sensor is replaced; a collector's Start Session answers Procedure Not Completed meanwhile. Temporary Issue keeps readings coming with NaN glucose, zero quality and General Device Fault until resolved. Readings outside the sensor range are reported at the boundary with the Device Can Process bit when the Feature has Sensor Result High-Low Detection. A session also ends by itself when its run time elapses.") {
             LabeledSegmentedPicker("Warm-up", selection: $viewModel.warmupDuration)

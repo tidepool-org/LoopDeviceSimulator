@@ -304,6 +304,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
                 }
             }
         }
+        ConsoleOut.shared.logMessage(message: "Write_Response \(characteristic.uuid) result: \(message ?? error.map { "error \($0.localizedDescription)" } ?? "success")")
         completion?("\(#function) " + (message ?? "error: " + error.debugDescription))
     }
     
@@ -316,6 +317,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Read_Request \(characteristic.uuid)")
         connectedPeripheral?.readValue(for: characteristic)
         self.completion = completion
     }
@@ -327,6 +329,7 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -374,6 +377,7 @@ extension InsulinDeliveryController {
             return
         }
         
+        ConsoleOut.shared.logMessage(message: "\(enabled ? "Subscribe to" : "Unsubscribe from") \(characteristic.uuid)")
         connectedPeripheral?.setNotifyValue(enabled, for: characteristic)
         self.completion = completion
     }
@@ -390,6 +394,7 @@ extension InsulinDeliveryController {
             return
         }
         
+        ConsoleOut.shared.logMessage(message: "\(enabled ? "Subscribe to" : "Unsubscribe from") \(characteristic.uuid)")
         connectedPeripheral?.setNotifyValue(enabled, for: characteristic)
         self.completion = completion
     }
@@ -427,6 +432,7 @@ extension InsulinDeliveryController {
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Read_Request \(characteristic.uuid)")
         connectedPeripheral?.readValue(for: characteristic)
         self.completion = completion
     }
@@ -447,6 +453,7 @@ extension InsulinDeliveryController {
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -466,6 +473,7 @@ extension InsulinDeliveryController {
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Write_Command \(characteristic.uuid) data: \(request.hexadecimalString) (without response)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withoutResponse)
         self.completion = completion
     }
@@ -691,6 +699,7 @@ extension InsulinDeliveryController {
             request = racp.createOldestStoredRecordRequest()
         }
 
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -730,6 +739,7 @@ extension InsulinDeliveryController {
         }
 
         let request = racp.createDeleteStoredRecordsRequest(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber)
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -769,6 +779,7 @@ extension InsulinDeliveryController {
         }
 
         let request = racp.createReportNumberOfStoredRecordsRequest(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber)
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -782,6 +793,7 @@ extension InsulinDeliveryController {
         }
 
         let request = racp.createAbortProcedureRequest()
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }

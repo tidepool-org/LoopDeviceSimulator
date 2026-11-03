@@ -11,7 +11,7 @@ import Security
 import CoreBluetooth
 import BluetoothCommonKit
 
-/// What a simulated ACS peer needs to resume its secure channel after a relaunch (HYDRA-9): the security
+/// What a simulated ACS peer needs to resume its secure channel after a relaunch: the security
 /// manager configuration (OOB number, key IDs, IV fixed fields and the nonce sequence number), the derived
 /// session key and, for a client, the resource handles it learned during the key exchange.
 struct SecurityState: Equatable {

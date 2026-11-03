@@ -11,7 +11,7 @@ import CoreBluetooth
 import BluetoothCommonKit
 import ContinuousGlucoseMonitorServiceKit
 
-/// Measurement cadences offered to the tester (HYD-G-001); the same setting the collector changes with
+/// Measurement cadences offered to the tester; the same setting the collector changes with
 /// Set CGM Communication Interval, so the two pickers mirror each other (Fastest = 5 s). Time Offset only has
 /// one-minute resolution, so 5 s readings share an offset. Off stops periodic readings and notifications.
 enum MeasurementIntervalOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
@@ -69,7 +69,7 @@ struct CGMReadingPoint: Identifiable, Hashable {
     let glucose: Double
 }
 
-/// Warm-up after Start Session before readings begin (TBD-03: default 1 min, adjustable while in progress).
+/// Warm-up after Start Session before readings begin (default 1 min, adjustable while in progress).
 enum WarmupDurationOption: TimeInterval, CaseIterable, Hashable, CustomStringConvertible {
     case off = 0
     case oneMinute = 60
@@ -135,7 +135,7 @@ enum GlucoseSourceOption: Hashable, CustomStringConvertible {
     }
 }
 
-/// One-shot corruption of the next CGMS payload (HYD-C-009); `none` once the sensor has used it.
+/// One-shot corruption of the next CGMS payload; `none` once the sensor has used it.
 enum IntegrityFaultOption: CaseIterable, Hashable, CustomStringConvertible {
     case none, omitCRC, corruptCRC, truncate
 
@@ -247,6 +247,7 @@ class CGMServerViewModel {
     var recordsPerNotification: RecordsPerNotificationOption = .eight {
         didSet {
             guard oldValue != recordsPerNotification else { return }
+            stimulus("Records per Notification → \(recordsPerNotification.rawValue)")
             sensor?.recordsPerNotification = recordsPerNotification.rawValue
         }
     }
@@ -264,6 +265,7 @@ class CGMServerViewModel {
     var calibrationSchedule: CalibrationScheduleOption = .oncePerSession {
         didSet {
             guard oldValue != calibrationSchedule else { return }
+            stimulus("Calibration Schedule → \(calibrationSchedule)")
             sensor?.calibrationSchedule = calibrationSchedule.schedule
         }
     }
@@ -275,6 +277,7 @@ class CGMServerViewModel {
     var warmupDuration: WarmupDurationOption = .oneMinute {
         didSet {
             guard oldValue != warmupDuration else { return }
+            stimulus("Warm-up Duration → \(warmupDuration)")
             sensor?.warmupDuration = warmupDuration.rawValue
         }
     }
@@ -330,7 +333,7 @@ class CGMServerViewModel {
     var constantEntry: String = "120"
     var glucoseSourceMessage: String? = nil
 
-    // Trace effects (CGM-DESIGN §Glucose trace, HYD-C-018): entries are text, applied with Apply Effects.
+    // Trace effects (CGM-DESIGN §Glucose trace): entries are text, applied with Apply Effects.
     var traceEffects: CGMTraceEffects = .none
     var noiseEntry: String = "0"
     var outlierChanceEntry: String = "0"
@@ -339,7 +342,7 @@ class CGMServerViewModel {
     var effectsSeedEntry: String = "1"
     var traceEffectsMessage: String? = nil
 
-    // Sensor clock skew (HYD-C-015/016): Session Start Time is written as host clock plus this, in minutes on screen.
+    // Sensor clock skew: Session Start Time is written as host clock plus this, in minutes on screen.
     var clockOffset: TimeInterval = 0
     var clockOffsetMinutesEntry: String = "0"
     var clockOffsetMessage: String? = nil
@@ -369,6 +372,7 @@ class CGMServerViewModel {
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private var refreshTimer: Timer?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
+    @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
 
     func startServer(serverName: String? = nil) {
         if server != nil {
@@ -411,7 +415,8 @@ class CGMServerViewModel {
         sensor.clockOffset = preservedClockOffset
         sensor.pendingIntegrityFault = preservedIntegrityFault   // a fault armed while powered off or across a restart
         preservedIntegrityFault = nil
-        restoreSecurity(on: sensor)   // before the first collector packet (HYDRA-9)
+        restoreSecurity(on: sensor)   // before the first collector packet
+        restoreHistory(on: sensor)    // before the delegate, so the restore itself is not persisted half-way
         sensor.delegate = self
         self.sensor = sensor
         mockSensorDidUpdate(sensor)
@@ -444,6 +449,7 @@ class CGMServerViewModel {
         refreshTimer = nil
         if let sensor {
             SessionLog.shared.log(.lifecycle, "CGM server stopped")
+            persistHistory(from: sensor)
             preservedIntegrityFault = sensor.pendingIntegrityFault
             preservedFeature = sensor.feature
             preservedManualStatus = sensor.manualSensorStatus
@@ -487,7 +493,7 @@ class CGMServerViewModel {
         calibrationStatusString = "none"
     }
 
-    /// Mode, role and the glucose source the log stamps on every line while this server runs (HYD-O-003).
+    /// Mode, role and the glucose source the log stamps on every line while this server runs.
     private func logContext(for sensor: MockCGMSensor) -> SessionLog.Context {
         let scenario: String
         switch sensor.trace {
@@ -638,7 +644,7 @@ class CGMServerViewModel {
         }
     }
 
-    /// Applies the sensor range entries (HYD-G-003); a bad entry is reported, not applied.
+    /// Applies the sensor range entries; a bad entry is reported, not applied.
     func applySensorRange() {
         guard let low = sensorRangeLowEntry.parsedDouble, let high = sensorRangeHighEntry.parsedDouble, low.isFinite, high.isFinite, low < high else {
             lifecycleMessage = "Sensor range needs numeric low < high"
@@ -887,7 +893,22 @@ extension CGMServerViewModel {
         stimulus("Forget Pairing")
         sensor?.invalidateKey()   // drops the key, resets the nonce sequence, indicates AC Status
         securityStore.forget(.cgmServer)
-        SessionLog.shared.log(.lifecycle, "CGM pairing forgotten")
+        // The measurement database lives as long as the pairing; the delegate persists the
+        // emptied store as the new file.
+        historyStore.forget(.cgmServer)
+        sensor?.recordStore.removeAll()
+        SessionLog.shared.log(.lifecycle, "CGM pairing and stored records forgotten")
+    }
+
+    /// Puts the persisted measurement database back on a fresh sensor.
+    private func restoreHistory(on sensor: MockCGMSensor) {
+        guard let stored = historyStore.load(CGMSensorHistory.self, for: .cgmServer) else { return }
+        sensor.restoreHistory(stored)
+        SessionLog.shared.log(.lifecycle, "CGM history restored: \(stored.records.count) records, session \(sensor.sessionState), time offset \(sensor.timeOffset) min")
+    }
+
+    private func persistHistory(from sensor: MockCGMSensor) {
+        historyStore.save(sensor.history, for: .cgmServer)
     }
 
     /// Puts the stored configuration (incl. the nonce sequence number) and session key back on a fresh sensor.
@@ -965,5 +986,6 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         isSecurityEstablished = sensor.isSecurityEstablished
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""
         persistSecurity(from: sensor)
+        persistHistory(from: sensor)
     }
 }

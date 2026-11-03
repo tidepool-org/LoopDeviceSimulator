@@ -39,7 +39,7 @@ struct DeviceSimulatorApp: App, HorizontalSizeClassOverride {
                     }
 
                     // One server at a time: each server view starts on appear and stops on disappear,
-                    // and the stack navigation shows a single detail view (HYD-Q-008).
+                    // and the stack navigation shows a single detail view.
                     Section(header: Text("Services")) {
                         NavigationLink(destination: insulinDeliveryServerView) {
                             Text("Insulin Delivery Server")

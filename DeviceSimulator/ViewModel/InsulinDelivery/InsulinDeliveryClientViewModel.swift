@@ -31,6 +31,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledStatus: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledStatus, !isResetting { SessionLog.shared.stimulus("Indications Status → \(indicationsEnabledStatus ? "on" : "off")") }
             insulinDeliveryController?.configureIDDStatusIndications(enabled: indicationsEnabledStatus) { message in
                 self.indicationsEnabledMessageStatus = message
             }
@@ -41,6 +42,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledStatusChanged: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledStatusChanged, !isResetting { SessionLog.shared.stimulus("Indications Status Changed → \(indicationsEnabledStatusChanged ? "on" : "off")") }
             insulinDeliveryController?.configureIDDStatusChangedIndications(enabled: indicationsEnabledStatusChanged) { message in
                 self.indicationsEnabledMessageStatusChanged = message
             }
@@ -51,6 +53,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledAnnunciationStatus: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledAnnunciationStatus, !isResetting { SessionLog.shared.stimulus("Indications Annunciation Status → \(indicationsEnabledAnnunciationStatus ? "on" : "off")") }
             insulinDeliveryController?.configureIDDAnnunciationStatusIndications(enabled: indicationsEnabledAnnunciationStatus) { message in
                 self.indicationsEnabledMessageAnnunciationStatus = message
             }
@@ -61,6 +64,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledStatusReaderControlPoint: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledStatusReaderControlPoint, !isResetting { SessionLog.shared.stimulus("Indications Status Reader Control Point → \(indicationsEnabledStatusReaderControlPoint ? "on" : "off")") }
             insulinDeliveryController?.configureIDDStatusReaderControlPointIndications(enabled: indicationsEnabledStatusReaderControlPoint) { message in
                 self.indicationsEnabledMessageStatusReaderControlPoint = message
             }
@@ -70,6 +74,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledCommandControlPoint: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledCommandControlPoint, !isResetting { SessionLog.shared.stimulus("Indications Command Control Point → \(indicationsEnabledCommandControlPoint ? "on" : "off")") }
             insulinDeliveryController?.configureIDDCommandControlPointIndications(enabled: indicationsEnabledCommandControlPoint) { message in
                 self.indicationsEnabledMessageCommandControlPoint = message
             }
@@ -79,6 +84,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledCommandData: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledCommandData, !isResetting { SessionLog.shared.stimulus("Indications Command Data → \(indicationsEnabledCommandData ? "on" : "off")") }
             insulinDeliveryController?.configureIDDCommandDataIndications(enabled: indicationsEnabledCommandData) { message in
                 self.indicationsEnabledMessageCommandData = message
             }
@@ -88,6 +94,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledRecordAccessControlPoint: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledRecordAccessControlPoint, !isResetting { SessionLog.shared.stimulus("Indications Record Access Control Point → \(indicationsEnabledRecordAccessControlPoint ? "on" : "off")") }
             insulinDeliveryController?.configureIDDRecordAccessControlPointIndications(enabled: indicationsEnabledRecordAccessControlPoint) { message in
                 self.indicationsEnabledMessageRecordAccessControlPoint = message
             }
@@ -97,6 +104,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledHistoryData: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledHistoryData, !isResetting { SessionLog.shared.stimulus("Indications History Data → \(indicationsEnabledHistoryData ? "on" : "off")") }
             insulinDeliveryController?.configureIDDHistoryDataIndications(enabled: indicationsEnabledHistoryData) { message in
                 self.indicationsEnabledMessageHistoryData = message
             }
@@ -106,6 +114,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
 
     @Published var indicationsEnabledDeviceTimeControlPoint: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledDeviceTimeControlPoint, !isResetting { SessionLog.shared.stimulus("Indications Device Time Control Point → \(indicationsEnabledDeviceTimeControlPoint ? "on" : "off")") }
             insulinDeliveryController?.configureDeviceTimeControlPointIndications(enabled: indicationsEnabledDeviceTimeControlPoint) { message in
                 self.indicationsEnabledMessageDeviceTimeControlPoint = message
             }
@@ -296,17 +305,20 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     }
 
     func connectToDevice(_ device: Device) {
+        SessionLog.shared.stimulus("Connect to \(device.name)")
         guard let uuid = UUID(uuidString: device.uuid) else { return }
         connectedDevice = device
         insulinDeliveryController?.connectToPeripheralWithUUID(uuid: uuid)
     }
 
     func refreshList() {
+        SessionLog.shared.stimulus("Refresh Peripheral List")
         deviceList.removeAll()
         insulinDeliveryController?.scanForPeripherals()
     }
 
     func disconnect() {
+        SessionLog.shared.stimulus("Disconnect")
         insulinDeliveryController?.disconnectFromPeripheral()
     }
     
@@ -318,7 +330,12 @@ class InsulinDeliveryClientViewModel: ObservableObject {
         consoleMessages.removeAll()
     }
 
+    /// True while `reset()` clears the toggles, so a teardown is not logged as something the tester did.
+    private var isResetting = false
+
     private func reset() {
+        isResetting = true
+        defer { isResetting = false }
         indicationsEnabledStatus = false
         indicationsEnabledStatusChanged = false
         indicationsEnabledAnnunciationStatus = false
@@ -443,24 +460,28 @@ extension InsulinDeliveryClientViewModel: ConsoleOutDelegate {
 // MARK: - Read Characteristics
 extension InsulinDeliveryClientViewModel {
     func readIDDFeatureCharacteristic() {
+        SessionLog.shared.stimulus("Read IDD Feature")
         insulinDeliveryController?.readIDDFeatureCharacteristic() { message in
             self.readMessageIDDFeatureCharacteristic = message
         }
     }
     
     func readIDDStatusCharacteristic() {
+        SessionLog.shared.stimulus("Read IDD Status")
         insulinDeliveryController?.readIDDStatusCharacteristic() { message in
             self.readMessageIDDStatusCharacteristic = message
         }
     }
     
     func readIDDStatusChangedCharacteristic() {
+        SessionLog.shared.stimulus("Read IDD Status Changed")
         insulinDeliveryController?.readIDDStatusChangedCharacteristic() { message in
             self.readMessageIDDStatusChangedCharacteristic = message
         }
     }
     
     func readIDDAnnunciationStatusCharacteristic() {
+        SessionLog.shared.stimulus("Read IDD Annunciation Status")
         insulinDeliveryController?.readIDDAnnunciationStatusCharacteristic() { message in
             self.readMessageIDDAnnunciationStatusCharacteristic = message
         }
@@ -470,12 +491,14 @@ extension InsulinDeliveryClientViewModel {
 // MARK: - Device Time
 extension InsulinDeliveryClientViewModel {
     func readDeviceTimeCharacteristic() {
+        SessionLog.shared.stimulus("Read Device Time")
         insulinDeliveryController?.readDeviceTimeCharacteristic() { message in
             self.readMessageDeviceTimeCharacteristic = message
         }
     }
     
     func setDeviceTime() {
+        SessionLog.shared.stimulus("Set Device Time")
         insulinDeliveryController?.setDeviceTime() { message in
             self.setDeviceTimeMessage = message
         }
@@ -485,6 +508,7 @@ extension InsulinDeliveryClientViewModel {
 // MARK: - Immediate Alert
 extension InsulinDeliveryClientViewModel {
     func playBeepSound() {
+        SessionLog.shared.stimulus("Play Beep Sound")
         insulinDeliveryController?.playBeepSound() { message in
             self.playBeepMessage = message
         }
@@ -494,6 +518,7 @@ extension InsulinDeliveryClientViewModel {
 // MARK: - Status Reader Control Point
 extension InsulinDeliveryClientViewModel {
     func resetStatus() {
+        SessionLog.shared.stimulus("Reset Status: \(statusToReset)")
         resetStatusMessage = nil
         insulinDeliveryController?.resetStatus(statusToReset) { message in
             self.resetStatusMessage = (self.resetStatusMessage ?? "") + "\n\n" + message
@@ -501,6 +526,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getActiveBolusIDs() {
+        SessionLog.shared.stimulus("Get Active Bolus IDs")
         getActiveBolusIDsMessage = nil
         insulinDeliveryController?.getActiveBolusIDs() { message in
             self.getActiveBolusIDsMessage = (self.getActiveBolusIDsMessage ?? "") + "\n\n" + message
@@ -508,6 +534,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getActiveBolusDelivery() {
+        SessionLog.shared.stimulus("Get Active Bolus Delivery: bolus ID \(bolusID), \(bolusValueSelection)")
         getActiveBolusDeliveryMessage = nil
         insulinDeliveryController?.getActiveBolusDelivery(bolusID, valueSelection: bolusValueSelection) { message in
             self.getActiveBolusDeliveryMessage = (self.getActiveBolusDeliveryMessage ?? "") + "\n\n" + message
@@ -515,6 +542,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getActiveBasalDelivery() {
+        SessionLog.shared.stimulus("Get Active Basal Rate Delivery")
         getActiveBasalDeliveryMessage = nil
         insulinDeliveryController?.getActiveBasalRateDelivery() { message in
             self.getActiveBasalDeliveryMessage = (self.getActiveBasalDeliveryMessage ?? "") + "\n\n" + message
@@ -522,6 +550,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getTotalDailyInsulinStatus() {
+        SessionLog.shared.stimulus("Get Total Daily Insulin Status")
         getTotalDailyInsulinStatusMessage = nil
         insulinDeliveryController?.getTotalDailyInsulinStatus() { message in
             self.getTotalDailyInsulinStatusMessage = (self.getTotalDailyInsulinStatusMessage ?? "") + "\n\n" + message
@@ -529,6 +558,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getCounter() {
+        SessionLog.shared.stimulus("Get Counter: \(counterType), \(counterValueSelection)")
         getCounterMessage = nil
         insulinDeliveryController?.getCounter(for: counterType, valueSelection: counterValueSelection) { message in
             self.getCounterMessage = (self.getCounterMessage ?? "") + "\n\n" + message
@@ -536,6 +566,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getDeliveredInsulin() {
+        SessionLog.shared.stimulus("Get Delivered Insulin")
         getDeliveredInsulinMessage = nil
         insulinDeliveryController?.getDeliveredInsulin() { message in
             self.getDeliveredInsulinMessage = (self.getDeliveredInsulinMessage ?? "") + "\n\n" + message
@@ -543,6 +574,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getInsulinOnBoard() {
+        SessionLog.shared.stimulus("Get Insulin On Board")
         getInsulinOnBoardMessage = nil
         insulinDeliveryController?.getInsulinOnBoard() { message in
             self.getInsulinOnBoardMessage = (self.getInsulinOnBoardMessage ?? "") + "\n\n" + message
@@ -554,6 +586,7 @@ extension InsulinDeliveryClientViewModel {
 // MARK: - Command Control Point
 extension InsulinDeliveryClientViewModel {
     func setTherapyControlState() {
+        SessionLog.shared.stimulus("Set Therapy Control State: \(therapyControlState)")
         setTherapyControlStateMessage = nil
         insulinDeliveryController?.setTherapyControlState(therapyControlState) { message in
             self.setTherapyControlStateMessage = (self.setTherapyControlStateMessage ?? "") + "\n\n" + message
@@ -561,6 +594,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setFlightMode() {
+        SessionLog.shared.stimulus("Set Flight Mode")
         setFlightModeMessage = nil
         insulinDeliveryController?.setFlightMode { message in
             self.setFlightModeMessage = (self.setFlightModeMessage ?? "") + "\n\n" + message
@@ -568,6 +602,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func snoozeAnnunciation() {
+        SessionLog.shared.stimulus("Snooze Annunciation: ID \(annunciationID)")
         annunciationMessage = nil
         insulinDeliveryController?.snoozeAnnunciation(annunciationID) { message in
             self.annunciationMessage = (self.annunciationMessage ?? "") + "\n\n" + message
@@ -575,6 +610,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func confirmAnnunciation() {
+        SessionLog.shared.stimulus("Confirm Annunciation: ID \(annunciationID)")
         annunciationMessage = nil
         insulinDeliveryController?.confirmAnnunciation(annunciationID) { message in
             self.annunciationMessage = (self.annunciationMessage ?? "") + "\n\n" + message
@@ -582,6 +618,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func readBasalProfile() {
+        SessionLog.shared.stimulus("Read Basal Rate Profile: template \(basalProfileNumber)")
         basalRateProfileMessage = nil
         insulinDeliveryController?.readBasalProfile(basalProfileNumber) { message in
             self.basalRateProfileMessage = (self.basalRateProfileMessage ?? "") + "\n\n" + message
@@ -589,6 +626,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func writeBasalProfile() {
+        SessionLog.shared.stimulus("Write Basal Rate Profile: template \(basalProfileNumber)")
         basalRateProfileMessage = nil
         insulinDeliveryController?.writeBasalProfile(basalProfileNumber) { message in
             self.basalRateProfileMessage = (self.basalRateProfileMessage ?? "") + "\n\n" + message
@@ -596,6 +634,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setTemplBasal() {
+        SessionLog.shared.stimulus("Set Temp Basal: \(tempBasalAmount), replace existing \(replaceExistingTempBasal)")
         tempBasalMessage = nil
         insulinDeliveryController?.setTempBasal(tempBasalAmount, replaceExisting: replaceExistingTempBasal) { message in
             self.tempBasalMessage = (self.tempBasalMessage ?? "") + "\n\n" + message
@@ -603,6 +642,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func cancelTempBasal() {
+        SessionLog.shared.stimulus("Cancel Temp Basal")
         tempBasalMessage = nil
         insulinDeliveryController?.cancelTempBasal { message in
             self.tempBasalMessage = (self.tempBasalMessage ?? "") + "\n\n" + message
@@ -610,6 +650,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setBolus() {
+        SessionLog.shared.stimulus("Set Bolus: \(bolusAmount)")
         bolusMessage = nil
         insulinDeliveryController?.setBolus(bolusAmount) { message in
             self.bolusMessage = (self.bolusMessage ?? "") + "\n\n" + message
@@ -617,6 +658,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func cancelBolus() {
+        SessionLog.shared.stimulus("Cancel Bolus: ID \(bolusID)")
         bolusMessage = nil
         insulinDeliveryController?.cancelBolus(with: bolusID) { message in
             self.bolusMessage = (self.bolusMessage ?? "") + "\n\n" + message
@@ -624,6 +666,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getAvailableBoluses() {
+        SessionLog.shared.stimulus("Get Available Boluses")
         getAvailableBolusesMessage = nil
         insulinDeliveryController?.getAvailableBoluses { message in
             self.getAvailableBolusesMessage = (self.getAvailableBolusesMessage ?? "") + "\n\n" + message
@@ -631,6 +674,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getTemplateStatusDetails() {
+        SessionLog.shared.stimulus("Get Template Status Details")
         getTemplateStatusDetailsMessage = nil
         insulinDeliveryController?.getTemplateStatusDetails { message in
             self.getTemplateStatusDetailsMessage = (self.getTemplateStatusDetailsMessage ?? "") + "\n\n" + message
@@ -638,6 +682,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func resetTemplateStatus() {
+        SessionLog.shared.stimulus("Reset Template Status: template \(profileTemplateNumber)")
         activateProfilesMessage = nil
         insulinDeliveryController?.resetTemplateStatus([profileTemplateNumber]) { message in
             self.activateProfilesMessage = (self.activateProfilesMessage ?? "") + "\n\n" + message
@@ -645,6 +690,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func activateProfileTemplates() {
+        SessionLog.shared.stimulus("Activate Profile Templates: template \(profileTemplateNumber)")
         activateProfilesMessage = nil
         insulinDeliveryController?.activateProfileTemplates([profileTemplateNumber]) { message in
             self.activateProfilesMessage = (self.activateProfilesMessage ?? "") + "\n\n" + message
@@ -652,6 +698,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getActivatedProfiles() {
+        SessionLog.shared.stimulus("Get Activated Profiles")
         getActivatedProfilesMessage = nil
         insulinDeliveryController?.getActivatedProfiles { message in
             self.getActivatedProfilesMessage = (self.getActivatedProfilesMessage ?? "") + "\n\n" + message
@@ -659,6 +706,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func startPriming() {
+        SessionLog.shared.stimulus("Start Priming: \(primingAmount)")
         primingMessage = nil
         insulinDeliveryController?.startPriming(amount: primingAmount) { message in
             self.primingMessage = (self.primingMessage ?? "") + "\n\n" + message
@@ -666,6 +714,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func stopPriming() {
+        SessionLog.shared.stimulus("Stop Priming")
         primingMessage = nil
         insulinDeliveryController?.stopPriming { message in
             self.primingMessage = (self.primingMessage ?? "") + "\n\n" + message
@@ -673,6 +722,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setInitialReservoirFillLevel() {
+        SessionLog.shared.stimulus("Set Initial Reservoir Fill Level: \(initialReservoirFillLevel)")
         setInitialReservoirFillMessage = nil
         insulinDeliveryController?.setInitialReservoirFillLevel(initialReservoirFillLevel) { message in
             self.setInitialReservoirFillMessage = (self.setInitialReservoirFillMessage ?? "") + "\n\n" + message
@@ -680,6 +730,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getMaxBolusAmount() {
+        SessionLog.shared.stimulus("Get Max Bolus Amount")
         maxBolusAmountMessage = nil
         insulinDeliveryController?.getMaxBolusAmount { message in
             self.maxBolusAmountMessage = (self.maxBolusAmountMessage ?? "") + "\n\n" + message
@@ -687,6 +738,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setMaxBolusAmount() {
+        SessionLog.shared.stimulus("Set Max Bolus Amount: \(maxBolusAmount)")
         maxBolusAmountMessage = nil
         insulinDeliveryController?.setMaxBolusAmount(maxBolusAmount) { message in
             self.maxBolusAmountMessage = (self.maxBolusAmountMessage ?? "") + "\n\n" + message
@@ -841,6 +893,7 @@ extension InsulinDeliveryClientViewModel {
     }
 
     func requestStoredRecords() {
+        SessionLog.shared.stimulus("RACP Report Stored Records: \(racpOperator), records \(minRecordNumberString)…\(maxRecordNumberString)")
         racpMessage = nil
         insulinDeliveryController?.requestStoredRecords(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message
@@ -848,6 +901,7 @@ extension InsulinDeliveryClientViewModel {
     }
 
     func deleteStoredRecords() {
+        SessionLog.shared.stimulus("RACP Delete Stored Records: \(racpOperator), records \(minRecordNumberString)…\(maxRecordNumberString)")
         racpMessage = nil
         insulinDeliveryController?.deleteStoredRecords(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message
@@ -855,6 +909,7 @@ extension InsulinDeliveryClientViewModel {
     }
 
     func requestNumberOfStoredRecords() {
+        SessionLog.shared.stimulus("RACP Report Number of Stored Records: \(racpOperator), records \(minRecordNumberString)…\(maxRecordNumberString)")
         racpMessage = nil
         insulinDeliveryController?.requestNumberOfStoredRecords(racpOperator: racpOperator, minRecordNumber: minRecordNumber, maxRecordNumber: maxRecordNumber) { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message
@@ -862,6 +917,7 @@ extension InsulinDeliveryClientViewModel {
     }
 
     func abortOperation() {
+        SessionLog.shared.stimulus("RACP Abort Operation")
         racpMessage = nil
         insulinDeliveryController?.racpAbortOperation() { message in
             self.racpMessage = (self.racpMessage ?? "") + "\n\n" + message

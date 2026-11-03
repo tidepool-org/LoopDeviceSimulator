@@ -66,6 +66,7 @@ class CGMClientViewModel: ObservableObject {
     private var isSyncingSecurity = false
 
     func establishSecureSession() {
+        SessionLog.shared.stimulus("Establish Secure Session")
         let key = sensorKeyEntry.trimmingCharacters(in: .whitespaces)
         guard !key.isEmpty else {
             authorizationMessage = "Sensor key cannot be empty"
@@ -101,6 +102,7 @@ class CGMClientViewModel: ObservableObject {
     }
 
     func invalidateKey() {
+        SessionLog.shared.stimulus("Invalidate Key")
         sensor?.invalidateKey { [weak self] result in
             self?.onMain { [weak self] in
                 guard let self else { return }
@@ -133,7 +135,7 @@ class CGMClientViewModel: ObservableObject {
     }
 
     /// The service's state carries the security manager configuration (incl. the nonce sequence number) and
-    /// the handle map; the key sits beside it. Saved on every state change, diffed by the store (HYDRA-9).
+    /// the handle map; the key sits beside it. Saved on every state change, diffed by the store.
     private func persistSecurity() {
         guard let sensor else { return }
         let state = sensor.state
@@ -287,12 +289,14 @@ class CGMClientViewModel: ObservableObject {
     }
 
     func connectToDevice(_ device: Device) {
+        SessionLog.shared.stimulus("Connect to \(device.name)")
         guard let uuid = UUID(uuidString: device.uuid) else { return }
         connectedDevice = device
         sensor?.connectToSensor(withIdentifier: uuid)
     }
 
     func refreshList() {
+        SessionLog.shared.stimulus("Refresh Peripheral List")
         deviceList.removeAll()
         if sensor == nil {
             startClient()
@@ -304,6 +308,7 @@ class CGMClientViewModel: ObservableObject {
     /// Forget rather than disconnect: BluetoothCommonKit reconnects to a remembered sensor on its own, which
     /// is right for Loop and wrong for a tester who just tapped Disconnect. Scanning resumes for the list.
     func disconnect() {
+        SessionLog.shared.stimulus("Disconnect")
         sensor?.forgetSensor()
         sensor?.scanForSensors()
     }
@@ -316,7 +321,12 @@ class CGMClientViewModel: ObservableObject {
         consoleMessages.removeAll()
     }
 
+    /// True while `reset()` clears the toggles, so a teardown is not logged as something the tester did.
+    private var isResetting = false
+
     private func reset() {
+        isResetting = true
+        defer { isResetting = false }
         resetSubscriptions()
         syncSecurityState()
         authorizationMessage = nil
@@ -373,10 +383,12 @@ class CGMClientViewModel: ObservableObject {
     // MARK: - Reads
 
     func readFeature() {
+        SessionLog.shared.stimulus("Read CGM Feature")
         sensor?.getFeature { [weak self] result in self?.onMain { self?.featureMessage = Self.describe(result) } }
     }
 
     func readStatus() {
+        SessionLog.shared.stimulus("Read CGM Status")
         sensor?.getStatus { [weak self] result in self?.onMain { self?.statusMessage = Self.describe(result) } }
     }
 
@@ -385,15 +397,18 @@ class CGMClientViewModel: ObservableObject {
     }
 
     func readSessionRunTime() {
+        SessionLog.shared.stimulus("Read Session Run Time")
         sensor?.getSessionRunTime { [weak self] result in self?.onMain { self?.sessionRunTimeMessage = Self.describe(result) } }
     }
 
     func readBatteryLevel() {
+        SessionLog.shared.stimulus("Read Battery Level")
         sensor?.getBatteryLevel { [weak self] result in self?.onMain { self?.batteryMessage = Self.describe(result) { "battery \($0)%" } } }
     }
 
     /// Reads the mandatory DIS characteristics one after another, appending each result.
     func readDeviceInformation() {
+        SessionLog.shared.stimulus("Read Device Information")
         deviceInformationMessage = nil
         let characteristics: [DeviceInfoCharacteristicUUID] = [.manufacturerNameString, .modelNumberString, .serialNumberString, .systemID]
         readDeviceInformation(characteristics[...])
@@ -413,6 +428,7 @@ class CGMClientViewModel: ObservableObject {
     // MARK: - Writes
 
     func writeSessionStartTime() {
+        SessionLog.shared.stimulus("Write Session Start Time")
         sensor?.setSessionStartTime { [weak self] result in
             self?.onMain { [weak self] in
                 guard let self else { return }
@@ -444,17 +460,20 @@ class CGMClientViewModel: ObservableObject {
     }
 
     func startSession() {
+        SessionLog.shared.stimulus("CGMCP Start Session")
         cgmcpMessage = nil
         sensor?.startSession(completion: cgmcpCompletion)
     }
 
     func stopSession() {
+        SessionLog.shared.stimulus("CGMCP Stop Session")
         cgmcpMessage = nil
         sensor?.stopSession(completion: cgmcpCompletion)
     }
 
     /// Sends the selected request from the operand entries; a bad entry is reported instead of sent.
     func sendSelectedSpecificOp() {
+        SessionLog.shared.stimulus("CGMCP \(selectedSpecificOp)")
         guard let sensor else { return }
         let opcode = selectedSpecificOp
         cgmcpMessage = nil
@@ -547,8 +566,9 @@ class CGMClientViewModel: ObservableObject {
         return "\(reportedRecords.count) new records, offsets \(first.timeOffset)–\(last.timeOffset) min\(duplicates)\(receiving)"
     }
 
-    /// HYD-G-015: ask for everything after the last measurement seen, or all records if none was seen.
+    /// Backfill: ask for everything after the last measurement seen, or all records if none was seen.
     func backfillSinceLastMeasurement() {
+        SessionLog.shared.stimulus("RACP Backfill Since Last Measurement")
         let request: CGMRACPRequest
         if let last = lastMeasurement, last.timeOffset < UInt16.max {
             request = CGMRACPRequest(opcode: .reportStoredRecords, racpOperator: .greaterThanOrEqualTo, minimum: last.timeOffset + 1)
@@ -559,6 +579,7 @@ class CGMClientViewModel: ObservableObject {
     }
 
     func sendRACPRequest() {
+        SessionLog.shared.stimulus("RACP \(racpOpcode), \(racpOperator)")
         let request: CGMRACPRequest
         if racpOpcode == .abortOperation {
             request = .abort
