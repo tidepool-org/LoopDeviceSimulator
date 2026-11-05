@@ -5,7 +5,7 @@
 //  Created by Nathaniel Hamming on 2026-10-16.
 //  Copyright © 2026 Tidepool Project. All rights reserved.
 //
-//  The session log shared by pump and CGM mode (HYD-O-001/003/004, TBD-01/02; CGM-DESIGN §Logging). Every
+//  The session log shared by pump and CGM mode (CGM-DESIGN §Logging). Every
 //  message the kits and the GATT server print goes through BluetoothCommonKit's ConsoleOut, so the log makes
 //  itself that console's delegate and stamps each message with a timestamp, the active mode and a kind. The
 //  view models add what the kits cannot know: tester stimuli and connection events. Lines are JSONL in
@@ -172,6 +172,37 @@ final class SessionLog: @unchecked Sendable {
         return destination
     }
 
+    /// The current file rendered one entry per line for readers who are not going to parse JSON (the
+    /// format is in docs/SESSION-LOG-FORMAT.md). Read between writes like `snapshot()`.
+    func textSnapshot() throws -> URL {
+        let now = Date()
+        let stamp = Self.iso8601.string(from: now).replacingOccurrences(of: ":", with: "-")
+        let destination = FileManager.default.temporaryDirectory.appendingPathComponent("hydra-session-log-\(stamp).txt")
+        let data: Data = try writer.sync { [self] in
+            FileManager.default.fileExists(atPath: fileURL.path) ? try Data(contentsOf: fileURL) : Data()
+        }
+        var text = "# HYDRA session log, exported \(Self.iso8601.string(from: now)) by \(Bundle.main.fullVersionString)\n"
+        text += "# timestamp(UTC) #seq mode role kind [scenario | version] detail\n"
+        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
+            guard let entry = try? decoder.decode(SessionLogEntry.self, from: line) else { continue }
+            text += Self.textLine(for: entry) + "\n"
+        }
+        try? FileManager.default.removeItem(at: destination)
+        try text.write(to: destination, atomically: true, encoding: .utf8)
+        return destination
+    }
+
+    /// One entry as a line: fixed-order fields separated by single spaces, the detail last so it can hold
+    /// spaces. Embedded newlines are written as the two characters `\n` so every entry stays on one line.
+    static func textLine(for entry: SessionLogEntry) -> String {
+        var scenario = ""
+        if let name = entry.scenario {
+            scenario = " [\(name)\(entry.scenarioVersion.map { " | \($0)" } ?? "")]"
+        }
+        let detail = entry.detail.replacingOccurrences(of: "\n", with: "\\n")
+        return "\(iso8601.string(from: entry.timestamp)) #\(entry.id) \(entry.mode.rawValue) \(entry.role.rawValue) \(entry.kind.rawValue)\(scenario) \(detail)"
+    }
+
     var fileSizeDescription: String {
         ByteCountFormatter.string(fromByteCount: fileSize, countStyle: .file)
     }
@@ -264,7 +295,7 @@ extension SessionLog: ConsoleOutDelegate {
         if text.contains("integrity fault") || (text.contains("error") && !benignError) || text.contains("fail") { return .error }
         if text.contains("readytosend") || text.contains("sendnextqueueitem") || text.contains("update_gatt_server") { return .trace }
         if text.contains("subscribe") || text.contains("advertis") || text.contains("connect") || text.contains("powered") || text.hasPrefix("state") { return .connection }
-        if text.contains("notification") || text.contains("capturereading") { return .notify }
+        if text.hasPrefix("notify") || text.contains("notification") || text.contains("capturereading") { return .notify }
         if text.contains("indicat") { return .indicate }
         if text.contains("write") { return .write }
         let mentionsRead = text.contains("read") && !text.contains("already") && !text.contains("ready") && !text.contains("thread")
@@ -280,6 +311,15 @@ struct SessionLogExport: Transferable {
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .json) { _ in
             SentTransferredFile(try SessionLog.shared.snapshot())
+        }
+    }
+}
+
+/// The same log as plain text, one entry per line.
+struct SessionLogTextExport: Transferable {
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .plainText) { _ in
+            SentTransferredFile(try SessionLog.shared.textSnapshot())
         }
     }
 }

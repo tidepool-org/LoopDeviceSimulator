@@ -27,7 +27,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
     
     @Published var isPeripheralConnected: Bool = false
 
-    /// True while this client holds a confirmed session key (kept across relaunches, HYDRA-9).
+    /// True while this client holds a confirmed session key (kept across relaunches).
     @Published var isSecurityEstablished: Bool = false
 
     @Published var ecdhKeyIDString: String = "1" {
@@ -55,6 +55,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledStatus: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledStatus, !isResetting { SessionLog.shared.stimulus("Indications Status → \(indicationsEnabledStatus ? "on" : "off")") }
             authorizationControlController?.configureACStatusIndications(enabled: indicationsEnabledStatus) { message in
                 self.indicationsEnabledMessageStatus = message
             }
@@ -65,6 +66,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledControlPoint: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledControlPoint, !isResetting { SessionLog.shared.stimulus("Indications Control Point → \(indicationsEnabledControlPoint ? "on" : "off")") }
             authorizationControlController?.configureACControlPointIndications(enabled: indicationsEnabledControlPoint) { message in
                 self.indicationsEnabledMessageControlPoint = message
             }
@@ -74,6 +76,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledDataOutNotify: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledDataOutNotify, !isResetting { SessionLog.shared.stimulus("Indications Data Out Notify → \(indicationsEnabledDataOutNotify ? "on" : "off")") }
             authorizationControlController?.configureACDataOutNotification(enabled: indicationsEnabledDataOutNotify) { message in
                 self.indicationsEnabledMessageDataOutNotify = message
             }
@@ -83,6 +86,7 @@ class AuthorizationControlClientViewModel: ObservableObject {
     
     @Published var indicationsEnabledDataOutIndicate: Bool = false {
         didSet {
+            if oldValue != indicationsEnabledDataOutIndicate, !isResetting { SessionLog.shared.stimulus("Indications Data Out Indicate → \(indicationsEnabledDataOutIndicate ? "on" : "off")") }
             authorizationControlController?.configureACDataOutIndications(enabled: indicationsEnabledDataOutIndicate) { message in
                 self.indicationsEnabledMessageDataOutIndicate = message
             }
@@ -163,17 +167,20 @@ class AuthorizationControlClientViewModel: ObservableObject {
     }
 
     func connectToDevice(_ device: Device) {
+        SessionLog.shared.stimulus("Connect to \(device.name)")
         guard let uuid = UUID(uuidString: device.uuid) else { return }
         connectedDevice = device
         authorizationControlController?.connectToPeripheralWithUUID(uuid: uuid)
     }
 
     func refreshList() {
+        SessionLog.shared.stimulus("Refresh Peripheral List")
         deviceList.removeAll()
         authorizationControlController?.scanForPeripherals()
     }
 
     func disconnect() {
+        SessionLog.shared.stimulus("Disconnect")
         authorizationControlController?.disconnectFromPeripheral()
     }
     
@@ -185,7 +192,12 @@ class AuthorizationControlClientViewModel: ObservableObject {
         consoleMessages.removeAll()
     }
 
+    /// True while `reset()` clears the toggles, so a teardown is not logged as something the tester did.
+    private var isResetting = false
+
     private func reset() {
+        isResetting = true
+        defer { isResetting = false }
         indicationsEnabledStatus = false
         indicationsEnabledControlPoint = false
         indicationsEnabledDataOutNotify = false
@@ -262,6 +274,7 @@ extension AuthorizationControlClientViewModel: ConsoleOutDelegate {
 // MARK: - Read Characteristics
 extension AuthorizationControlClientViewModel {
     func readACStatusCharacteristic() {
+        SessionLog.shared.stimulus("Read AC Status")
         authorizationControlController?.readACStatusCharacteristic() { message in
             self.readMessageACStatusCharacteristic = message
         }
@@ -271,6 +284,7 @@ extension AuthorizationControlClientViewModel {
 // MARK: - Command Control Point
 extension AuthorizationControlClientViewModel {
     func getAllActiveDescriptors() {
+        SessionLog.shared.stimulus("Get All Active Descriptors")
         getAllActiveDescriptorsMessage = nil
         authorizationControlController?.getAllActiveDescriptors() { message in
             self.getAllActiveDescriptorsMessage = (self.getAllActiveDescriptorsMessage ?? "") + "\n\n" + message
@@ -278,6 +292,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func getResourceHandleToUUIDMap() {
+        SessionLog.shared.stimulus("Get Resource Handle To UUID Map")
         getResourceHandleToUUIDMapMessage = nil
         authorizationControlController?.getResourceHandleToUUIDMap() { message in
             self.getResourceHandleToUUIDMapMessage = (self.getResourceHandleToUUIDMapMessage ?? "") + "\n\n" + message
@@ -285,6 +300,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func getRestrictionMapIDList() {
+        SessionLog.shared.stimulus("Get Restriction Map ID List")
         getRestrictionMapIDListMessage = nil
         authorizationControlController?.getRestrictionMapIDList() { message in
             self.getRestrictionMapIDListMessage = (self.getRestrictionMapIDListMessage ?? "") + "\n\n" + message
@@ -292,6 +308,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func getACSFeatures() {
+        SessionLog.shared.stimulus("Get ACS Features")
         getACSFeaturesMessage = nil
         authorizationControlController?.getACSFeatures() { message in
             self.getACSFeaturesMessage = (self.getACSFeaturesMessage ?? "") + "\n\n" + message
@@ -299,6 +316,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func getATTMTU() {
+        SessionLog.shared.stimulus("Get ATT MTU")
         getATTMTUMessage = nil
         authorizationControlController?.getATTMTU() { message in
             self.getATTMTUMessage = (self.getATTMTUMessage ?? "") + "\n\n" + message
@@ -306,6 +324,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func ecdhConfirmationCode() {
+        SessionLog.shared.stimulus("ECDH Confirmation Code")
         ecdhConfirmationCodeMessage = nil
         authorizationControlController?.ecdhConfirmationCode() { message in
             self.ecdhConfirmationCodeMessage = (self.ecdhConfirmationCodeMessage ?? "") + "\n\n" + message
@@ -313,6 +332,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func keyExchangeECDH() {
+        SessionLog.shared.stimulus("Key Exchange ECDH")
         keyExchangeECDHMessage = nil
         authorizationControlController?.keyExchangeECDH() { message in
             self.keyExchangeECDHMessage = (self.keyExchangeECDHMessage ?? "") + "\n\n" + message
@@ -320,6 +340,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func keyExchangeKDF() {
+        SessionLog.shared.stimulus("Key Exchange KDF")
         keyExchangeKDFMessage = nil
         authorizationControlController?.keyExchangeKDF() { message in
             self.keyExchangeKDFMessage = (self.keyExchangeKDFMessage ?? "") + "\n\n" + message
@@ -327,6 +348,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func setClientNonceFixed() {
+        SessionLog.shared.stimulus("Set Client Nonce Fixed")
         setClientNonceFixedMessage = nil
         authorizationControlController?.setClientNonceFixed() { message in
             self.setClientNonceFixedMessage = (self.setClientNonceFixedMessage ?? "") + "\n\n" + message
@@ -334,6 +356,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func invalidateKey() {
+        SessionLog.shared.stimulus("Invalidate Key")
         invalidateKeyMessage = nil
         authorizationControlController?.invalidateKey() { message in
             self.invalidateKeyMessage = (self.invalidateKeyMessage ?? "") + "\n\n" + message
@@ -341,6 +364,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func startKeyExchange() {
+        SessionLog.shared.stimulus("Start Key Exchange")
         startKeyExchangeMessage = nil
         authorizationControlController?.startKeyExchange() { message in
             self.startKeyExchangeMessage = (self.startKeyExchangeMessage ?? "") + "\n\n" + message
@@ -348,6 +372,7 @@ extension AuthorizationControlClientViewModel {
     }
     
     func ecdhConfirmationRandomNumber() {
+        SessionLog.shared.stimulus("ECDH Confirmation Random Number")
         ecdhConfirmationRandomNumberMessage = nil
         authorizationControlController?.ecdhConfirmationRandomNumber() { message in
             self.ecdhConfirmationRandomNumberMessage = (self.ecdhConfirmationRandomNumberMessage ?? "") + "\n\n" + message
@@ -358,6 +383,7 @@ extension AuthorizationControlClientViewModel {
 // MARK: - Secure Request
 extension AuthorizationControlClientViewModel {
     func sendSecureRequest() {
+        SessionLog.shared.stimulus("Send Secure Request")
         sendSecureRequestMessage = nil
         authorizationControlController?.sendSecureRequest() { message in
             self.sendSecureRequestMessage = (self.sendSecureRequestMessage ?? "") + "\n\n" + message

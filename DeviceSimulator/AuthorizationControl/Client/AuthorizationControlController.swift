@@ -16,7 +16,7 @@ protocol AuthorizationControlControllerDelegate: AnyObject {
     func didDisconnectFromPeripheral(sender: AuthorizationControlController)
     func characteristicIndicationMessage(_ cbUUID: CBUUID, message: String)
     /// The session key, the resource handle map or the security manager configuration (incl. the nonce
-    /// sequence number) changed; the host persists them (HYDRA-9).
+    /// sequence number) changed; the host persists them.
     func securityStateDidChange(sender: AuthorizationControlController)
 }
 
@@ -255,6 +255,7 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
                 }
             }
         }
+        ConsoleOut.shared.logMessage(message: "Write_Response \(characteristic.uuid) result: \(message ?? error.map { "error \($0.localizedDescription)" } ?? "success")")
         completion?("\(#function) " + (message ?? "error: " + error.debugDescription))
     }
     
@@ -267,6 +268,7 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Read_Request \(characteristic.uuid)")
         connectedPeripheral?.readValue(for: characteristic)
         self.completion = completion
     }
@@ -278,6 +280,7 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
             completion("Service and characteristic not available")
             return
         }
+        ConsoleOut.shared.logMessage(message: "Write_Request \(characteristic.uuid) data: \(request.hexadecimalString)")
         self.connectedPeripheral?.writeValue(request, for: characteristic, type: CBCharacteristicWriteType.withResponse)
         self.completion = completion
     }
@@ -309,6 +312,7 @@ extension AuthorizationControlController {
             return
         }
         
+        ConsoleOut.shared.logMessage(message: "\(enabled ? "Subscribe to" : "Unsubscribe from") \(characteristic.uuid)")
         connectedPeripheral?.setNotifyValue(enabled, for: characteristic)
         self.completion = completion
     }

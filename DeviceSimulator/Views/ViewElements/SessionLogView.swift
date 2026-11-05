@@ -8,7 +8,7 @@
 
 import SwiftUI
 
-/// The session log on the device: newest first, filterable by kind, shared as the JSONL file (HYD-O-004).
+/// The session log on the device: newest first, filterable by kind, shared as JSONL or text.
 struct SessionLogView: View {
     private let log = SessionLog.shared
     @State private var filter: SessionLogEntry.Kind?
@@ -36,7 +36,17 @@ struct SessionLogView: View {
                 } label: {
                     Image(systemName: filter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 }
-                ShareLink(item: SessionLogExport(), preview: SharePreview("HYDRA session log"))
+                // Two renderings of the same file: JSONL for tools, text for people.
+                Menu {
+                    ShareLink(item: SessionLogExport(), preview: SharePreview("HYDRA session log (JSONL)")) {
+                        Label("Share as JSONL", systemImage: "curlybraces")
+                    }
+                    ShareLink(item: SessionLogTextExport(), preview: SharePreview("HYDRA session log (text)")) {
+                        Label("Share as text", systemImage: "doc.plaintext")
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
                 Button(role: .destructive) {
                     confirmClear = true
                 } label: {
