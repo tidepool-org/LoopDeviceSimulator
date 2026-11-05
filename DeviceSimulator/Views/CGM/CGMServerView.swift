@@ -216,6 +216,7 @@ struct CGMServerView: View {
             RoundedCardValueRow(label: "Session Start Time", value: viewModel.sessionStartTimeString)
             RoundedCardValueRow(label: "Sensor Status", value: viewModel.sensorStatusString)
             RoundedCardValueRow(label: "Session Run Time", value: viewModel.sessionRunTimeString)
+            RoundedCardValueRow(label: "Remaining Life", value: viewModel.remainingLifeString)
             // The clock the next Session Start Time is written in (host clock plus the skew).
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 RoundedCardValueRow(label: "Sensor Clock", value: deviceClockText(now: context.date))
