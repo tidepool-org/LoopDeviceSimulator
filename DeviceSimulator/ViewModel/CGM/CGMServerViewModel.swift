@@ -308,6 +308,8 @@ class CGMServerViewModel {
     var sessionStartTimeString: String = ""
     var timeOffsetString: String = ""
     var sessionRunTimeString: String = ""
+    /// What a collector derives from Session Run Time and Time Offset; shown so a tester can check the arithmetic.
+    var remainingLifeString: String = ""
     var sensorStatusString: String = ""
     var lastGlucoseString: String = ""
     var measurementCount: Int = 0
@@ -474,6 +476,7 @@ class CGMServerViewModel {
         sessionStartTimeString = ""
         timeOffsetString = ""
         sessionRunTimeString = ""
+        remainingLifeString = ""
         sensorStatusString = ""
         lastGlucoseString = ""
         lastGlucose = nil
@@ -491,6 +494,16 @@ class CGMServerViewModel {
         calibrationCount = 0
         lastCalibrationString = "none"
         calibrationStatusString = "none"
+    }
+
+    /// Run time minus Time Offset, the way a collector works it out from the two values it can read. A stopped
+    /// session keeps the remainder it had at the stop, since its offset is frozen there.
+    static func remainingLife(runTimeHours: UInt16, timeOffset: UInt16, state: CGMSessionState) -> String {
+        guard state != .notStarted else { return "session not started" }
+        let remainingMinutes = Int(runTimeHours) * 60 - Int(timeOffset)
+        guard remainingMinutes > 0 else { return "expired" }
+        let text = remainingMinutes >= 60 ? "\(remainingMinutes / 60) h \(remainingMinutes % 60) min" : "\(remainingMinutes) min"
+        return state == .stopped ? "\(text) (stopped)" : text
     }
 
     /// Mode, role and the glucose source the log stamps on every line while this server runs.
@@ -953,6 +966,7 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         }
         timeOffsetString = "\(sensor.timeOffset) min"
         sessionRunTimeString = String(describing: sensor.sessionRunTime)
+        remainingLifeString = Self.remainingLife(runTimeHours: sensor.sessionRunTime.hours, timeOffset: sensor.timeOffset, state: sensor.sessionState)
         sensorStatusString = String(describing: sensor.sensorStatus)
         lastGlucoseString = sensor.lastMeasurement.map { String(describing: $0) } ?? "no measurement yet"
         lastGlucose = sensor.lastMeasurement?.glucoseConcentration
