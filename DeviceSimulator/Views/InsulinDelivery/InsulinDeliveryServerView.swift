@@ -15,11 +15,20 @@ struct InsulinDeliveryServerView: View {
     /// Advertised local name, from the root list's Server Name field.
     var serverName: String? = nil
 
+    /// Two pages like the CGM: the HUD lands first, the full configuration is one swipe to the right.
+    @State private var page = 0
     /// A sheet rather than a push: pushing would make this view disappear and stop the server.
     @State private var isShowingLog = false
 
     var body: some View {
-        insulinDeliveryServer
+        TabView(selection: $page) {
+            InsulinDeliveryPumpHUDView(viewModel: viewModel)
+                .tag(0)
+            insulinDeliveryServer
+                .tag(1)
+        }
+            .tabViewStyle(.page(indexDisplayMode: .always))
+            .indexViewStyle(.page(backgroundDisplayMode: .always))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -45,6 +54,8 @@ struct InsulinDeliveryServerView: View {
                 Text("Number of Subscribed Devices: \(viewModel.numberOfSubscribedDevices)")
                 insulinDeliveryServerControls
             }
+            // The page control overlays the bottom of the TabView; keep the last card's controls above it.
+            .contentMargins(.bottom, InsulinDeliveryPumpHUDView.pageControlClearance, for: .scrollContent)
         }
     }
     
