@@ -106,11 +106,55 @@ struct InsulinDeliveryPumpHUDView: View {
                 chip("Controllers", "\(viewModel.numberOfSubscribedDevices)", tint: viewModel.numberOfSubscribedDevices > 0 ? .blue : .gray)
                 chip("Secure", securityChipValue, tint: securityTint)
             }
-            // Only while an override is active, so a tester cannot forget it is on.
-            if viewModel.commandResponseOverride != .normal {
-                chip("Command responses", viewModel.commandResponseOverride.description, tint: .orange)
+            chipRow {
+                // Tapping flips it: with behaviour off the pump acknowledges delivery commands without checking
+                // its state, which is the quick way to drive it from a controller without the set-up steps.
+                Button {
+                    viewModel.isPumpBehaviourEnabled.toggle()
+                } label: {
+                    chip("Pump behaviour", viewModel.isPumpBehaviourEnabled ? "on" : "off", tint: viewModel.isPumpBehaviourEnabled ? .green : .gray)
+                }
+                .buttonStyle(.plain)
+                .disabled(!viewModel.isPumpPoweredOn)
+                if viewModel.commandResponseOverride != .normal {
+                    // Only while an override is active, so a tester cannot forget it is on.
+                    chip("Command responses", viewModel.commandResponseOverride.description, tint: .orange)
+                }
+            }
+            if viewModel.isPumpBehaviourEnabled && !viewModel.isTherapyRunning && viewModel.isPumpPoweredOn {
+                readinessChecklist
             }
             pumpKeyRow
+        }
+    }
+
+    // MARK: Readiness
+
+    /// With behaviour on, the pump refuses to run until a controller has done these in order; the checklist
+    /// shows how far it has got.
+    private var readinessChecklist: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("To run therapy, the controller must:")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            readinessStep("Write a complete 24 h basal profile", done: viewModel.isBasalProfileComplete)
+            readinessStep("Prime the reservoir and cannula", done: viewModel.isPumpReady)
+            readinessStep("Activate the basal profile", done: viewModel.isBasalProfileActivated)
+            readinessStep("Set therapy to Run, or use Run Therapy below", done: viewModel.isTherapyRunning)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func readinessStep(_ title: String, done: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: done ? "checkmark.circle.fill" : "circle")
+                .foregroundStyle(done ? .green : .secondary)
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(done ? .secondary : .primary)
         }
     }
 

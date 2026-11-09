@@ -89,6 +89,10 @@ class InsulinDeliveryServerViewModel {
     var activeBolusProgress: (delivered: Double, programmed: Double)? = nil
     var isTherapyRunning = false
     var therapyActionMessage: String? = nil
+    // The steps between a fresh pump and Run, for the HUD's checklist.
+    var isBasalProfileComplete = false
+    var isPumpReady = false
+    var isBasalProfileActivated = false
     /// Holds until the tester changes it; shown on the HUD while anything but Normal is selected.
     var commandResponseOverride: CommandResponseOverride = .normal {
         didSet {
@@ -159,6 +163,9 @@ class InsulinDeliveryServerViewModel {
         activeBolusProgress = nil
         isTherapyRunning = false
         therapyActionMessage = nil
+        isBasalProfileComplete = false
+        isPumpReady = false
+        isBasalProfileActivated = false
     }
 
     /// Therapy control from the pump itself rather than from the controller, as a user would on the device.
@@ -317,6 +324,9 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         tempBasalEndDate = pump.tempBasalEndDate
         activeBolusProgress = activeBolusDeliveryStatus.progressState == .noActiveBolus ? nil : (activeBolusDeliveryStatus.insulinDelivered, activeBolusDeliveryStatus.insulinProgrammed)
         isTherapyRunning = pump.therapyState == .run
+        isBasalProfileComplete = pump.basalProfileComplete
+        isPumpReady = pump.operationalState == .ready
+        isBasalProfileActivated = pump.basalRateProfileActivated
         commandResponseOverride = pump.commandResponseOverride
     }
 }
