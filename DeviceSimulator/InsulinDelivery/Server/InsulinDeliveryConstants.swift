@@ -11,7 +11,7 @@ import CoreBluetooth
 import InsulinDeliveryServiceKit
 
 struct InsulinDeliveryConstants {
-    static let serverName: String = "Tidepool-1-Simulator"
+    static let serverName: String = "Tidepool-Pump-Simulator"
 }
 
 // MARK: - bit flags

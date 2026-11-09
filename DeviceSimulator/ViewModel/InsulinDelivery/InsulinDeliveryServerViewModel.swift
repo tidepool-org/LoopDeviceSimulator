@@ -80,7 +80,28 @@ class InsulinDeliveryServerViewModel {
     var basalDeliveryString: String = ""
     var isTempBasalString: String = ""
     var bolusDeliveryString: String = ""
-    
+
+    // HUD page: delivery as numbers, the temp basal's end for a countdown, and the tester's response override.
+    var reservoirRemaining: Double = 0
+    var activeBasalRate: Double? = nil
+    var isTempBasal = false
+    var tempBasalEndDate: Date? = nil
+    var activeBolusProgress: (delivered: Double, programmed: Double)? = nil
+    var isTherapyRunning = false
+    var therapyActionMessage: String? = nil
+    // The steps between a fresh pump and Run, for the HUD's checklist.
+    var isBasalProfileComplete = false
+    var isPumpReady = false
+    var isBasalProfileActivated = false
+    /// Holds until the tester changes it; shown on the HUD while anything but Normal is selected.
+    var commandResponseOverride: CommandResponseOverride = .normal {
+        didSet {
+            guard oldValue != commandResponseOverride else { return }
+            stimulus("Command Response → \(commandResponseOverride)")
+            mockInsulinDeliveryPump?.commandResponseOverride = commandResponseOverride
+        }
+    }
+
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
     @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
@@ -111,6 +132,7 @@ class InsulinDeliveryServerViewModel {
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         restoreSecurity(on: pump)
         restoreHistory(on: pump)   // before the delegate, so the restore itself is not persisted half-way
+        pump.commandResponseOverride = commandResponseOverride   // the override outlives a restart
         pump.delegate = self
         mockInsulinDeliveryPump = pump
         mockPumpDidUpdate(pump)
@@ -137,6 +159,21 @@ class InsulinDeliveryServerViewModel {
         numberOfSubscribedDevices = 0
         therapyStateString = String(describing: InsulinTherapyControlState.undetermined)
         operationalStateString = String(describing: PumpOperationalState.undetermined)
+        tempBasalEndDate = nil
+        activeBolusProgress = nil
+        isTherapyRunning = false
+        therapyActionMessage = nil
+        isBasalProfileComplete = false
+        isPumpReady = false
+        isBasalProfileActivated = false
+    }
+
+    /// Therapy control from the pump itself rather than from the controller, as a user would on the device.
+    func setTherapyState(_ state: InsulinTherapyControlState) {
+        stimulus("Therapy → \(state) (on the pump)")
+        guard let pump = mockInsulinDeliveryPump else { return }
+        therapyActionMessage = pump.setTherapyControlState(state) ? nil : "Refused: the pump must be ready with an activated basal profile to run"
+        mockPumpDidUpdate(pump)
     }
 
     func restartServer() {
@@ -281,6 +318,16 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         isTempBasalString = pump.isTempBasal ? "yes" : "no"
         let activeBolusDeliveryStatus = pump.activeBolusDeliveryStatus
         bolusDeliveryString = activeBolusDeliveryStatus.progressState == .noActiveBolus ? "no active bolus" : "\(String(describing: activeBolusDeliveryStatus.insulinDelivered)) of \(String(describing: activeBolusDeliveryStatus.insulinProgrammed))"
+        reservoirRemaining = pump.reservoirRemaining
+        activeBasalRate = pump.activeBasalRate
+        isTempBasal = pump.isTempBasal
+        tempBasalEndDate = pump.tempBasalEndDate
+        activeBolusProgress = activeBolusDeliveryStatus.progressState == .noActiveBolus ? nil : (activeBolusDeliveryStatus.insulinDelivered, activeBolusDeliveryStatus.insulinProgrammed)
+        isTherapyRunning = pump.therapyState == .run
+        isBasalProfileComplete = pump.basalProfileComplete
+        isPumpReady = pump.operationalState == .ready
+        isBasalProfileActivated = pump.basalRateProfileActivated
+        commandResponseOverride = pump.commandResponseOverride
     }
 }
 
