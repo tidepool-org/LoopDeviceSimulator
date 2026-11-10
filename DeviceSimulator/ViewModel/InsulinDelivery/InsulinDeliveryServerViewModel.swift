@@ -242,13 +242,29 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 
     /// Changes made while no controller was listening sit in the Status Changed flags; the moment a controller
     /// enables indications again it is told about them, instead of waiting for the next change to happen.
+    /// The characteristics behind those flags are re-indicated the same way as the controller subscribes to each.
     private func indicatePendingStatusChangesIfNeeded(for characteristicUUID: CBUUID) {
-        guard characteristicUUID == InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID,
-              let statusChanged = mockInsulinDeliveryPump?.statusChangedCharacteristic,
-              !statusChanged.flags.isEmpty
-        else { return }
-        SessionLog.shared.log(.lifecycle, "indicating status changes pending from before the connection: \(statusChanged.flags)")
-        statusChanged.triggerIndication(for: statusChanged.flags)
+        guard let pump = mockInsulinDeliveryPump else { return }
+        let pending = pump.statusChangedCharacteristic.flags
+        guard !pending.isEmpty else { return }
+
+        switch characteristicUUID {
+        case InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID:
+            SessionLog.shared.log(.lifecycle, "indicating status changes pending from before the connection: \(pending)")
+            pump.statusChangedCharacteristic.triggerIndication(for: pending)
+        case InsulinDeliveryCharacteristicUUID.annunciationStatus.cbUUID:
+            guard pending.contains(.annunciationStatusChanged),
+                  let annunciation = pump.annunciationStatusCharacteristic.currentAnnunciation
+            else { return }
+            SessionLog.shared.log(.lifecycle, "indicating the annunciation raised before the connection: \(annunciation.type)")
+            pump.annunciationStatusCharacteristic.triggerAnnunciation(for: annunciation)
+        case InsulinDeliveryCharacteristicUUID.status.cbUUID:
+            guard !pending.isDisjoint(with: [.therapyControlStateChanged, .operationalStateChanged, .reservoirStatusChanged]) else { return }
+            SessionLog.shared.log(.lifecycle, "indicating the pump status changed before the connection")
+            pump.statusCharacteristic.triggerIndication()
+        default:
+            break
+        }
     }
 
     func centralDidUnsubscribe(characteristicUUID: CBUUID) {
