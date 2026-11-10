@@ -89,6 +89,10 @@ class InsulinDeliveryServerViewModel {
     var activeBolusProgress: (delivered: Double, programmed: Double)? = nil
     var isTherapyRunning = false
     var therapyActionMessage: String? = nil
+    // A bolus entered on the pump, as a user would at the device; fast bolus only, manual activation.
+    var bolusEntry: String = "1.0"
+    var maxBolusAmount: Double = 0
+    var bolusActionMessage: String? = nil
     // The steps between a fresh pump and Run, for the HUD's checklist.
     var isBasalProfileComplete = false
     var isPumpReady = false
@@ -163,6 +167,8 @@ class InsulinDeliveryServerViewModel {
         activeBolusProgress = nil
         isTherapyRunning = false
         therapyActionMessage = nil
+        bolusActionMessage = nil
+        maxBolusAmount = 0
         isBasalProfileComplete = false
         isPumpReady = false
         isBasalProfileActivated = false
@@ -173,6 +179,33 @@ class InsulinDeliveryServerViewModel {
         stimulus("Therapy → \(state) (on the pump)")
         guard let pump = mockInsulinDeliveryPump else { return }
         therapyActionMessage = pump.setTherapyControlState(state) ? nil : "Refused: the pump must be ready with an activated basal profile to run"
+        mockPumpDidUpdate(pump)
+    }
+
+    /// A fast bolus started on the pump itself. The same checks the controller's Set Bolus would meet, so the
+    /// pump never carries a bolus it would have refused; the controller hears of it like any other change.
+    func deliverBolusOnPump() {
+        guard let pump = mockInsulinDeliveryPump else { return }
+        guard let amount = Double(bolusEntry.trimmingCharacters(in: .whitespaces)), amount > 0 else {
+            bolusActionMessage = "Enter a bolus amount above 0 U"
+            return
+        }
+        guard pump.therapyState == .run else {
+            bolusActionMessage = "Refused: therapy is not running"
+            return
+        }
+        guard !pump.isBolusActive else {
+            bolusActionMessage = "Refused: a bolus is already active"
+            return
+        }
+        guard amount <= pump.maxBolusAmount else {
+            bolusActionMessage = "Refused: above the max bolus of \(pump.maxBolusAmount) U"
+            return
+        }
+        stimulus("Bolus \(amount) U (on the pump)")
+        let bolusID = pump.setBolus(amount, activationType: .manualBolus)
+        bolusActionMessage = nil
+        SessionLog.shared.log(.lifecycle, "pump started fast bolus \(bolusID) of \(amount) U (manual)")
         mockPumpDidUpdate(pump)
     }
 
@@ -204,6 +237,18 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
     func centralDidSubscribe(characteristicUUID: CBUUID) {
         numberOfSubscribedDevices = server?.subscribedCentrals.count ?? 0
         SessionLog.shared.log(.connection, "central subscribed to \(characteristicUUID.uuidString) (\(numberOfSubscribedDevices) subscribed)")
+        indicatePendingStatusChangesIfNeeded(for: characteristicUUID)
+    }
+
+    /// Changes made while no controller was listening sit in the Status Changed flags; the moment a controller
+    /// enables indications again it is told about them, instead of waiting for the next change to happen.
+    private func indicatePendingStatusChangesIfNeeded(for characteristicUUID: CBUUID) {
+        guard characteristicUUID == InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID,
+              let statusChanged = mockInsulinDeliveryPump?.statusChangedCharacteristic,
+              !statusChanged.flags.isEmpty
+        else { return }
+        SessionLog.shared.log(.lifecycle, "indicating status changes pending from before the connection: \(statusChanged.flags)")
+        statusChanged.triggerIndication(for: statusChanged.flags)
     }
 
     func centralDidUnsubscribe(characteristicUUID: CBUUID) {
@@ -324,6 +369,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         tempBasalEndDate = pump.tempBasalEndDate
         activeBolusProgress = activeBolusDeliveryStatus.progressState == .noActiveBolus ? nil : (activeBolusDeliveryStatus.insulinDelivered, activeBolusDeliveryStatus.insulinProgrammed)
         isTherapyRunning = pump.therapyState == .run
+        maxBolusAmount = pump.maxBolusAmount
         isBasalProfileComplete = pump.basalProfileComplete
         isPumpReady = pump.operationalState == .ready
         isBasalProfileActivated = pump.basalRateProfileActivated
