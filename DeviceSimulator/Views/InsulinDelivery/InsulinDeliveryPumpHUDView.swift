@@ -257,8 +257,37 @@ struct InsulinDeliveryPumpHUDView: View {
                     .foregroundStyle(.orange)
                     .multilineTextAlignment(.center)
             }
+            bolusAction
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// A fast bolus entered on the pump, the way a user would at the device; the controller learns of it
+    /// through the same status change as any other.
+    private var bolusAction: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 10) {
+                TextField("Units", text: $viewModel.bolusEntry)
+                    .keyboardType(.decimalPad)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(maxWidth: 90)
+                Text("U")
+                    .foregroundStyle(.secondary)
+                Button {
+                    viewModel.deliverBolusOnPump()
+                } label: {
+                    actionLabel("Deliver Bolus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(!viewModel.isPumpPoweredOn || !viewModel.isTherapyRunning || viewModel.activeBolusProgress != nil)
+            }
+            if let message = viewModel.bolusActionMessage {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+            }
+        }
     }
 
     private func actionLabel(_ title: String) -> some View {
