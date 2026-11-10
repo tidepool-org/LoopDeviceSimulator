@@ -17,6 +17,20 @@ class InsulinDeliveryServerViewModel {
     @ObservationIgnored private var server: GATTServer?
     @ObservationIgnored private var mockInsulinDeliveryPump: MockInsulinDeliveryPump?
 
+    /// The tester's configuration, kept across relaunches. Pairing and history have their own stores; the
+    /// error-forcing toggles (server busy and the like) are session stimuli a stop clears, so they are not kept.
+    struct Settings: Codable, Equatable {
+        var isPumpBehaviourEnabled = true
+        var commandResponseOverride = CommandResponseOverride.normal.rawValue
+        var bolusEntry = "1.0"
+
+        static let defaults = Settings()
+    }
+
+    init() {
+        restoreSettings()
+    }
+
     var consoleMessages: String = ""
     var isServerBusy = false {
         didSet {
@@ -36,8 +50,11 @@ class InsulinDeliveryServerViewModel {
     var readyToDisconnect = false {
         didSet { if oldValue != readyToDisconnect { stimulus("Ready to Disconnect → \(readyToDisconnect ? "on" : "off")") } }
     }
+    /// Reset to Defaults puts this back to on without starting a server the root screen is not showing.
+    @ObservationIgnored private var isResetting = false
     var isPumpPoweredOn = true {
         didSet {
+            guard !isResetting else { return }
             stimulus("Power On Pump → \(isPumpPoweredOn ? "on" : "off")")
             if isPumpPoweredOn {
                 startServer()
@@ -46,10 +63,12 @@ class InsulinDeliveryServerViewModel {
             }
         }
     }
-    var isPumpBehaviourEnabled = false {
+    /// On by default, like the kit's pump: the state checks and refusals a real pump makes.
+    var isPumpBehaviourEnabled = true {
         didSet {
             if oldValue != isPumpBehaviourEnabled { stimulus("Pump behaviour → \(isPumpBehaviourEnabled ? "on" : "off")") }
             mockInsulinDeliveryPump?.isPumpBehaviourEnabled = isPumpBehaviourEnabled
+            persistSettings()
         }
     }
     /// Kept across relaunches with the pairing, so the pump comes back gated the way Loop last saw it.
@@ -90,7 +109,9 @@ class InsulinDeliveryServerViewModel {
     var isTherapyRunning = false
     var therapyActionMessage: String? = nil
     // A bolus entered on the pump, as a user would at the device; fast bolus only, manual activation.
-    var bolusEntry: String = "1.0"
+    var bolusEntry: String = "1.0" {
+        didSet { if oldValue != bolusEntry { persistSettings() } }
+    }
     var maxBolusAmount: Double = 0
     var bolusActionMessage: String? = nil
     // The steps between a fresh pump and Run, for the HUD's checklist.
@@ -103,12 +124,71 @@ class InsulinDeliveryServerViewModel {
             guard oldValue != commandResponseOverride else { return }
             stimulus("Command Response → \(commandResponseOverride)")
             mockInsulinDeliveryPump?.commandResponseOverride = commandResponseOverride
+            persistSettings()
         }
     }
 
     @ObservationIgnored private var serverName: String?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
     @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
+    @ObservationIgnored private let settingsStore = TesterSettingsStore.shared
+
+    // MARK: Tester settings
+
+    private var currentSettings: Settings {
+        Settings(isPumpBehaviourEnabled: isPumpBehaviourEnabled,
+                 commandResponseOverride: commandResponseOverride.rawValue,
+                 bolusEntry: bolusEntry)
+    }
+
+    private func persistSettings() {
+        guard !isMirroring else { return }   // a restore or a teardown is not a change to keep
+        settingsStore.save(currentSettings, for: .pumpServer)
+    }
+
+    /// Applies a snapshot without logging it as tester actions; the pump, if one runs, follows through the didSets.
+    private func apply(_ settings: Settings) {
+        isMirroring = true
+        defer { isMirroring = false }
+        isPumpBehaviourEnabled = settings.isPumpBehaviourEnabled
+        commandResponseOverride = CommandResponseOverride(rawValue: settings.commandResponseOverride) ?? .normal
+        bolusEntry = settings.bolusEntry
+    }
+
+    private func restoreSettings() {
+        guard let stored = settingsStore.load(Settings.self, for: .pumpServer) else { return }
+        apply(stored)
+    }
+
+    /// The documented default state for everything this screen owns: settings, power, Authorization Control
+    /// gate, pairing and history. A running server (the iPad shows one beside the root list) is stopped first,
+    /// so it cannot write the old state back, and started again on the defaults.
+    func resetToDefaults() {
+        let wasRunning = server != nil
+        if wasRunning { stopServer() }
+
+        settingsStore.forget(.pumpServer)
+        securityStore.forget(.pumpServer)
+        securityStore.setAuthorizationControlEnabled(false, for: .pumpServer)
+        historyStore.forget(.pumpServer)
+
+        apply(.defaults)
+        isMirroring = true
+        isResetting = true
+        isAuthorizationControlEnabled = false
+        isPumpPoweredOn = true
+        isResetting = false
+        isMirroring = false
+        isServerBusy = false
+        procedureAlreadyInProgress = false
+        outOfRangeSchedule = false
+        readyToDisconnect = false
+        annunciationTypeToIssue = nil
+        therapyActionMessage = nil
+        bolusActionMessage = nil
+
+        if wasRunning { startServer() }
+    }
 
     /// True while the pump's state is being mirrored into these properties (delegate updates, stop), so the
     /// didSet handlers do not log the pump's own defaults or a teardown reset as something the tester did.
@@ -136,11 +216,13 @@ class InsulinDeliveryServerViewModel {
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         restoreSecurity(on: pump)
         restoreHistory(on: pump)   // before the delegate, so the restore itself is not persisted half-way
-        pump.commandResponseOverride = commandResponseOverride   // the override outlives a restart
+        // The tester's settings outlive a restart and a relaunch.
+        pump.isPumpBehaviourEnabled = isPumpBehaviourEnabled
+        pump.commandResponseOverride = commandResponseOverride
         pump.delegate = self
         mockInsulinDeliveryPump = pump
         mockPumpDidUpdate(pump)
-        SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName)")
+        SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName), simulator \(Bundle.main.fullVersionString)")
     }
 
     func stopServer() {
@@ -153,6 +235,7 @@ class InsulinDeliveryServerViewModel {
         if let pump = mockInsulinDeliveryPump {
             SessionLog.shared.log(.lifecycle, "pump server stopped")
             persistHistory(from: pump)
+            settingsStore.save(currentSettings, for: .pumpServer)
         }
         server?.disconnect()
         server = nil
@@ -390,6 +473,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         isPumpReady = pump.operationalState == .ready
         isBasalProfileActivated = pump.basalRateProfileActivated
         commandResponseOverride = pump.commandResponseOverride
+        settingsStore.save(currentSettings, for: .pumpServer)
     }
 }
 

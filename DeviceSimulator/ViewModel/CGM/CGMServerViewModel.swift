@@ -87,7 +87,7 @@ enum WarmupDurationOption: TimeInterval, CaseIterable, Hashable, CustomStringCon
 }
 
 /// How often the sensor asks the collector for a calibration (CGMS §3.7.2.2 Next Calibration Time).
-enum CalibrationScheduleOption: CaseIterable, Hashable, CustomStringConvertible {
+enum CalibrationScheduleOption: CaseIterable, Hashable, Codable, CustomStringConvertible {
     case never
     case oncePerSession
     case tenMinutes
@@ -163,6 +163,72 @@ enum IntegrityFaultOption: CaseIterable, Hashable, CustomStringConvertible {
 @Observable
 class CGMServerViewModel {
 
+    /// The tester's configuration, kept across relaunches: the sensor-side values a restart preserves plus the
+    /// pickers. Pairing and the measurement database have their own stores.
+    struct Settings: Codable, Equatable {
+        /// `CGMGlucoseTrace` is not Codable; a bundled scenario is stored by name and looked up again.
+        enum Trace: Codable, Equatable {
+            case constant(mgdl: Double)
+            case sineCurve(base: Double, amplitude: Double, period: TimeInterval)
+            case scenario(name: String)
+
+            init(_ trace: CGMGlucoseTrace) {
+                switch trace {
+                case .constant(let mgdl): self = .constant(mgdl: mgdl)
+                case let .sineCurve(base, amplitude, period): self = .sineCurve(base: base, amplitude: amplitude, period: period)
+                case .scenario(let scenario): self = .scenario(name: scenario.name)
+                }
+            }
+
+            /// nil for a scenario no longer bundled; the caller keeps its default.
+            var trace: CGMGlucoseTrace? {
+                switch self {
+                case .constant(let mgdl): return .constant(mgdl: mgdl)
+                case let .sineCurve(base, amplitude, period): return .sineCurve(base: base, amplitude: amplitude, period: period)
+                case .scenario(let name): return CGMScenarioLibrary.bundled.first { $0.name == name }.map(CGMGlucoseTrace.scenario)
+                }
+            }
+        }
+
+        /// `CGMAlertLevels` is not Codable; the six levels are stored by name.
+        struct AlertLevels: Codable, Equatable {
+            var patientHigh, patientLow, hypo, hyper, rateOfDecrease, rateOfIncrease: Double
+
+            init(_ levels: CGMAlertLevels) {
+                patientHigh = levels.patientHigh; patientLow = levels.patientLow
+                hypo = levels.hypo; hyper = levels.hyper
+                rateOfDecrease = levels.rateOfDecrease; rateOfIncrease = levels.rateOfIncrease
+            }
+
+            var levels: CGMAlertLevels {
+                CGMAlertLevels(patientHigh: patientHigh, patientLow: patientLow, hypo: hypo, hyper: hyper, rateOfDecrease: rateOfDecrease, rateOfIncrease: rateOfIncrease)
+            }
+        }
+
+        var requiresEncryption = false
+        var measurementInterval = MeasurementIntervalOption.fiveMinutes.rawValue
+        var recordsPerNotification = RecordsPerNotificationOption.eight.rawValue
+        var backfillDuration = BackfillDurationOption.oneHour.rawValue
+        var calibrationSchedule = CalibrationScheduleOption.oncePerSession
+        var warmupDuration = WarmupDurationOption.oneMinute.rawValue
+        var feature = CGMFeature.simulatorDefault
+        var manualSensorStatus = CGMSensorStatusAnnunciation()
+        var sessionRunTime = CGMSessionRunTime(hours: 240)
+        var trace = Trace.scenario(name: CGMServerViewModel.defaultScenarioName)
+        var recordCapacity = CGMRecordStore.defaultCapacity
+        var alertLevels = AlertLevels(CGMAlertLevels())
+        var sensorRangeLow: Double = 40
+        var sensorRangeHigh: Double = 400
+        var traceEffects = CGMTraceEffects.none
+        var clockOffset: TimeInterval = 0
+
+        static let defaults = Settings()
+    }
+
+    init() {
+        restoreSettings()
+    }
+
     @ObservationIgnored private var server: GATTServer?
     @ObservationIgnored private var sensor: MockCGMSensor?
 
@@ -187,9 +253,11 @@ class CGMServerViewModel {
     }
     var lastInjectedFaultString: String = "none"
 
+    /// Reset to Defaults puts power back to on without starting a server the root screen is not showing.
+    @ObservationIgnored private var isResetting = false
     var isSensorPoweredOn = true {
         didSet {
-            guard oldValue != isSensorPoweredOn else { return }
+            guard oldValue != isSensorPoweredOn, !isResetting else { return }
             stimulus("Power On Sensor → \(isSensorPoweredOn ? "on" : "off")")
             if isSensorPoweredOn {
                 startServer()
@@ -206,6 +274,7 @@ class CGMServerViewModel {
             guard oldValue != requiresEncryption else { return }
             stimulus("Require Encrypted Link → \(requiresEncryption ? "on" : "off")")
             if server != nil { restart() }
+            persistSettings()
         }
     }
 
@@ -228,6 +297,7 @@ class CGMServerViewModel {
             guard oldValue != measurementInterval else { return }
             stimulus("Communication Interval → \(measurementInterval)")
             applyMeasurementInterval(to: sensor)
+            persistSettings()
         }
     }
 
@@ -249,10 +319,13 @@ class CGMServerViewModel {
             guard oldValue != recordsPerNotification else { return }
             stimulus("Records per Notification → \(recordsPerNotification.rawValue)")
             sensor?.recordsPerNotification = recordsPerNotification.rawValue
+            persistSettings()
         }
     }
     var recordSettingsMessage: String? = nil
-    var backfillDuration: BackfillDurationOption = .oneHour
+    var backfillDuration: BackfillDurationOption = .oneHour {
+        didSet { if oldValue != backfillDuration { persistSettings() } }
+    }
 
     // CGM Specific Ops state (CGMS §3.7): set by the collector, mirrored here so a tester can confirm it landed.
     /// The sensor's cadence when a collector wrote an interval the picker cannot show (e.g. 10 min).
@@ -267,6 +340,7 @@ class CGMServerViewModel {
             guard oldValue != calibrationSchedule else { return }
             stimulus("Calibration Schedule → \(calibrationSchedule)")
             sensor?.calibrationSchedule = calibrationSchedule.schedule
+            persistSettings()
         }
     }
     var calibrationStatusString: String = "none"
@@ -279,6 +353,7 @@ class CGMServerViewModel {
             guard oldValue != warmupDuration else { return }
             stimulus("Warm-up Duration → \(warmupDuration)")
             sensor?.warmupDuration = warmupDuration.rawValue
+            persistSettings()
         }
     }
     var warmupEndDate: Date?
@@ -361,9 +436,11 @@ class CGMServerViewModel {
     @ObservationIgnored private var preservedFeature: CGMFeature = .simulatorDefault
     @ObservationIgnored private var preservedManualStatus: CGMSensorStatusAnnunciation = []
     @ObservationIgnored private var preservedRunTime = CGMSessionRunTime(hours: 240)
-    @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = CGMScenarioLibrary.bundled
+    /// The bundled default scenario, or the kit's own trace if the bundle ever loses it.
+    static let defaultTrace: CGMGlucoseTrace = CGMScenarioLibrary.bundled
         .first { $0.name == CGMServerViewModel.defaultScenarioName }
         .map(CGMGlucoseTrace.scenario) ?? .simulatorDefault
+    @ObservationIgnored private var preservedTrace: CGMGlucoseTrace = CGMServerViewModel.defaultTrace
     @ObservationIgnored private var preservedRecordCapacity = CGMRecordStore.defaultCapacity
     @ObservationIgnored private var preservedAlertLevels = CGMAlertLevels()
     @ObservationIgnored private var preservedSensorRange: ClosedRange<Double> = 40...400
@@ -375,6 +452,116 @@ class CGMServerViewModel {
     @ObservationIgnored private var refreshTimer: Timer?
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
     @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
+    @ObservationIgnored private let settingsStore = TesterSettingsStore.shared
+
+    // MARK: - Tester settings
+
+    /// From the live sensor while one runs, otherwise from what the last stop preserved.
+    private var currentSettings: Settings {
+        var settings = Settings(requiresEncryption: requiresEncryption,
+                                measurementInterval: measurementInterval.rawValue,
+                                recordsPerNotification: recordsPerNotification.rawValue,
+                                backfillDuration: backfillDuration.rawValue,
+                                calibrationSchedule: calibrationSchedule,
+                                warmupDuration: warmupDuration.rawValue,
+                                feature: preservedFeature,
+                                manualSensorStatus: preservedManualStatus,
+                                sessionRunTime: preservedRunTime,
+                                trace: Settings.Trace(preservedTrace),
+                                recordCapacity: preservedRecordCapacity,
+                                alertLevels: Settings.AlertLevels(preservedAlertLevels),
+                                sensorRangeLow: preservedSensorRange.lowerBound,
+                                sensorRangeHigh: preservedSensorRange.upperBound,
+                                traceEffects: preservedTraceEffects,
+                                clockOffset: preservedClockOffset)
+        if let sensor {
+            settings.feature = sensor.feature
+            settings.manualSensorStatus = sensor.manualSensorStatus
+            settings.sessionRunTime = sensor.sessionRunTime
+            settings.trace = Settings.Trace(sensor.trace)
+            settings.recordCapacity = sensor.recordStore.capacity
+            settings.alertLevels = Settings.AlertLevels(sensor.alertLevels)
+            settings.sensorRangeLow = sensor.sensorRange.lowerBound
+            settings.sensorRangeHigh = sensor.sensorRange.upperBound
+            settings.traceEffects = sensor.traceEffects
+            settings.clockOffset = sensor.clockOffset
+        }
+        return settings
+    }
+
+    private func persistSettings() {
+        guard !isMirroring else { return }   // a restore or a teardown is not a change to keep
+        settingsStore.save(currentSettings, for: .cgmServer)
+    }
+
+    /// Applies a snapshot without logging it as tester actions. Meant for a stopped sensor: the preserved values
+    /// reach the next sensor in `startServer`, the pickers through their didSets.
+    private func apply(_ settings: Settings) {
+        isMirroring = true
+        defer { isMirroring = false }
+        requiresEncryption = settings.requiresEncryption
+        measurementInterval = MeasurementIntervalOption(rawValue: settings.measurementInterval) ?? .fiveMinutes
+        recordsPerNotification = RecordsPerNotificationOption(rawValue: settings.recordsPerNotification) ?? .eight
+        backfillDuration = BackfillDurationOption(rawValue: settings.backfillDuration) ?? .oneHour
+        calibrationSchedule = settings.calibrationSchedule
+        warmupDuration = WarmupDurationOption(rawValue: settings.warmupDuration) ?? .oneMinute
+        preservedFeature = settings.feature
+        preservedManualStatus = settings.manualSensorStatus
+        preservedRunTime = settings.sessionRunTime
+        preservedTrace = settings.trace.trace ?? Self.defaultTrace
+        preservedRecordCapacity = settings.recordCapacity
+        preservedAlertLevels = settings.alertLevels.levels
+        if settings.sensorRangeLow < settings.sensorRangeHigh {
+            preservedSensorRange = settings.sensorRangeLow...settings.sensorRangeHigh
+        }
+        preservedTraceEffects = settings.traceEffects
+        preservedClockOffset = settings.clockOffset
+        alertLevels = preservedAlertLevels
+        recordCapacityEntry = String(preservedRecordCapacity)
+        sessionRunTimeHoursEntry = String(preservedRunTime.hours)
+        syncGlucoseSourceEntries(from: preservedTrace)
+        sensorRangeLowEntry = Self.format(preservedSensorRange.lowerBound)
+        sensorRangeHighEntry = Self.format(preservedSensorRange.upperBound)
+        syncTraceEffectsEntries(from: preservedTraceEffects)
+        clockOffsetMinutesEntry = Self.format(preservedClockOffset / 60)
+        // The displays the powered-off paths keep in step, so the screen shows what the next start will apply.
+        featureFlags = preservedFeature.flags
+        manualSensorStatus = preservedManualStatus
+        traceEffects = preservedTraceEffects
+        clockOffset = preservedClockOffset
+    }
+
+    private func restoreSettings() {
+        guard let stored = settingsStore.load(Settings.self, for: .cgmServer) else { return }
+        apply(stored)
+    }
+
+    /// The documented default state for everything this screen owns: settings, power, Authorization Control
+    /// gate, pairing and the measurement database. A running server (the iPad shows one beside the root list)
+    /// is stopped first, so it cannot write the old state back, and started again on the defaults.
+    func resetToDefaults() {
+        let wasRunning = server != nil
+        if wasRunning { stopServer() }
+
+        settingsStore.forget(.cgmServer)
+        securityStore.forget(.cgmServer)
+        securityStore.setAuthorizationControlEnabled(false, for: .cgmServer)
+        historyStore.forget(.cgmServer)
+
+        apply(.defaults)
+        isMirroring = true
+        isResetting = true
+        isAuthorizationControlEnabled = false
+        integrityFault = .none
+        isSensorPoweredOn = true
+        isResetting = false
+        isMirroring = false
+        preservedIntegrityFault = nil
+        procedureAlreadyInProgress = false
+        outOfRangeSchedule = false
+
+        if wasRunning { startServer() }
+    }
 
     func startServer(serverName: String? = nil) {
         if server != nil {
@@ -428,7 +615,7 @@ class CGMServerViewModel {
         syncTraceEffectsEntries(from: sensor.traceEffects)
         syncClockOffsetEntry(from: sensor.clockOffset)
         SessionLog.shared.context = logContext(for: sensor)
-        SessionLog.shared.log(.lifecycle, "CGM server started, advertising \(self.serverName ?? CGMConstants.serverName)")
+        SessionLog.shared.log(.lifecycle, "CGM server started, advertising \(self.serverName ?? CGMConstants.serverName), simulator \(Bundle.main.fullVersionString)")
 
         // Time Offset is clock-derived, so refresh the display once a minute. Common modes keep it ticking
         // while the tester scrolls.
@@ -462,6 +649,7 @@ class CGMServerViewModel {
             preservedSensorRange = sensor.sensorRange
             preservedTraceEffects = sensor.traceEffects
             preservedClockOffset = sensor.clockOffset
+            settingsStore.save(currentSettings, for: .cgmServer)
         }
         server?.disconnect()
         server = nil
@@ -768,14 +956,15 @@ class CGMServerViewModel {
         switch glucoseSource {
         case .sineWave:
             guard let start = sineStartEntry.parsedDouble, let amplitude = sineAmplitudeEntry.parsedDouble,
-                  let minutes = sinePeriodMinutesEntry.parsedDouble, minutes > 0
+                  let minutes = sinePeriodMinutesEntry.parsedDouble, minutes > 0,
+                  start.isFinite, amplitude.isFinite, minutes.isFinite
             else {
                 glucoseSourceMessage = "Sine wave needs numeric start, amplitude and a period above 0 minutes"
                 return
             }
             sensor.trace = .sineCurve(base: start, amplitude: amplitude, period: minutes * 60)
         case .constant:
-            guard let mgdl = constantEntry.parsedDouble else {
+            guard let mgdl = constantEntry.parsedDouble, mgdl.isFinite else {
                 glucoseSourceMessage = "Constant needs a numeric mg/dL value"
                 return
             }
@@ -1001,5 +1190,6 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""
         persistSecurity(from: sensor)
         persistHistory(from: sensor)
+        settingsStore.save(currentSettings, for: .cgmServer)
     }
 }
