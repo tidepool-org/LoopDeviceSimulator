@@ -218,6 +218,7 @@ class InsulinDeliveryServerViewModel {
         let messageQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
         faultQueue = messageQueue
         let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
+        messageQueue.hasE2ECRC = { [weak pump] in pump?.isE2EProtectionSupported ?? false }
         // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         restoreSecurity(on: pump)

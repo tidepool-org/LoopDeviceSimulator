@@ -608,6 +608,7 @@ class CGMServerViewModel {
             requiresEncryption: requiresEncryption,
             feature: preservedFeature
         )
+        messageQueue.hasE2ECRC = { [weak sensor] in sensor?.isE2EProtectionSupported ?? false }
         sensor.manualSensorStatus = preservedManualStatus
         sensor.sessionRunTime = preservedRunTime
         applyMeasurementInterval(to: sensor)
