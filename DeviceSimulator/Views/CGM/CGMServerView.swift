@@ -29,6 +29,9 @@ struct CGMServerView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
         .indexViewStyle(.page(backgroundDisplayMode: .always))
+        // The page control sits at the TabView's bottom edge; lift it clear of the test-tool notice bar.
+        .padding(.bottom, 20)
+        .background(Color(.systemGroupedBackground))
         .navigationTitle("CGM Sensor")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -69,6 +72,7 @@ struct CGMServerView: View {
                 featureCard
                 sensorStatusCard
                 errorHandlingCard
+                FaultInjectionCard(host: viewModel)
             }
             // The page control overlays the bottom of the TabView; keep the last card's controls above it.
             .contentMargins(.bottom, CGMSensorHUDView.pageControlClearance, for: .scrollContent)

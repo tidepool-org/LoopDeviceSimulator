@@ -84,6 +84,10 @@ class InsulinDeliveryServerViewModel {
     /// Mirrors AC Status: true while the pump holds a confirmed session key.
     var isSecurityEstablished = false
 
+    /// The queue the running pump sends through; nil while powered off. Faults are session stimuli, not settings.
+    var faultQueue: FaultInjectingMessageQueue? = nil
+    var faultMessage: String? = nil
+
     @ObservationIgnored var oobRandomNumberString: String {
         guard let oobString = mockInsulinDeliveryPump?.securityManager.configuration.oobRandomNumber else {
             return "Unknown"
@@ -210,7 +214,9 @@ class InsulinDeliveryServerViewModel {
         self.server = server
         self.server?.delegate = self
 
-        let messageQueue = MessageQueue(gattService: server)
+        // Every notification and indication the pump sends passes through here, so the tester can fault it.
+        let messageQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
+        faultQueue = messageQueue
         let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
         // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
@@ -240,6 +246,8 @@ class InsulinDeliveryServerViewModel {
         server?.disconnect()
         server = nil
         mockInsulinDeliveryPump = nil
+        faultQueue = nil
+        faultMessage = nil
         isServerBusy = false
         procedureAlreadyInProgress = false
         outOfRangeSchedule = false
@@ -301,6 +309,38 @@ class InsulinDeliveryServerViewModel {
 
     func clearConsole() {
         consoleMessages.removeAll()
+    }
+}
+
+// MARK: - Fault Injection
+
+extension InsulinDeliveryServerViewModel: FaultInjectionHost {
+    static let faultTargets: [FaultInjectingMessageQueue.Target] = [
+        .any,
+        .init(name: "Status Changed", uuid: InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID),
+        .init(name: "Status", uuid: InsulinDeliveryCharacteristicUUID.status.cbUUID),
+        .init(name: "Annunciation Status", uuid: InsulinDeliveryCharacteristicUUID.annunciationStatus.cbUUID),
+        .init(name: "History Data", uuid: InsulinDeliveryCharacteristicUUID.historyData.cbUUID),
+        .init(name: "Record Access Control Point", uuid: InsulinDeliveryCharacteristicUUID.recordAccessControlPoint.cbUUID),
+        .init(name: "Command Control Point", uuid: InsulinDeliveryCharacteristicUUID.commandControlPoint.cbUUID),
+        .init(name: "Status Reader Control Point", uuid: InsulinDeliveryCharacteristicUUID.statusReaderControlPoint.cbUUID),
+        .init(name: "AC Data Out (secure)", uuid: ACCharacteristicUUID.dataOutIndicate.cbUUID),
+    ]
+
+    func armFault(_ fault: FaultInjectingMessageQueue.Fault, on target: FaultInjectingMessageQueue.Target) {
+        stimulus("Fault armed: \(fault) on \(target.name.lowercased())")
+        faultMessage = nil
+        faultQueue?.arm(fault, on: target)
+    }
+
+    func disarmFault() {
+        stimulus("Fault disarmed")
+        faultQueue?.disarm()
+    }
+
+    func replayLastMessage(on target: FaultInjectingMessageQueue.Target) {
+        stimulus("Replay last message on \(target.name.lowercased())")
+        faultMessage = faultQueue?.replayLast(on: target) == true ? nil : "Nothing has been sent on \(target.name.lowercased()) yet"
     }
 }
 
