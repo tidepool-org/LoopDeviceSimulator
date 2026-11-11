@@ -106,6 +106,72 @@ final class FaultInjectingMessageQueueTests: XCTestCase {
         XCTAssertEqual(sentValues, [])
     }
 
+    // MARK: Payload faults
+
+    /// A payload with a valid E2E-CRC trailer, as both services send them.
+    private let protectedPayload = Data([0x0F, 0x55, 0x01, 0x02]).appendingCRC()
+
+    private var sentData: [Data] { inner.queuedItems.map(\.value) }
+
+    func testCorruptCRCFlipsTheTrailerOnly() throws {
+        queue.hasE2ECRC = { true }
+        queue.arm(.corruptCRC, on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: protectedPayload))
+        let sent = try XCTUnwrap(sentData.first)
+        XCTAssertEqual(sent.count, protectedPayload.count)
+        XCTAssertEqual(sent.dropLast(2), protectedPayload.dropLast(2))
+        XCTAssertFalse(sent.isCRCValid)
+        XCTAssertNil(queue.armed)
+    }
+
+    func testOmitCRCDropsTheTrailer() {
+        queue.hasE2ECRC = { true }
+        queue.arm(.omitCRC, on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: protectedPayload))
+        XCTAssertEqual(sentData.first, protectedPayload.dropLast(2))
+    }
+
+    func testCRCFaultsSendIntactWhenTheDeviceHasNoCRC() {
+        queue.hasE2ECRC = { false }
+        queue.arm(.corruptCRC, on: .any)
+        let plain = Data([0x0F, 0x55])
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: plain))
+        XCTAssertEqual(sentData.first, plain)
+        XCTAssertNil(queue.armed)
+        XCTAssertTrue(logged.last?.contains("sent intact") ?? false)
+    }
+
+    func testTruncateShortensThePayload() {
+        queue.arm(.truncate(bytes: 3), on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: protectedPayload))
+        XCTAssertEqual(sentData.first, protectedPayload.dropLast(3))
+    }
+
+    func testCorruptFieldInvertsTheByteAndRecomputesTheCRC() throws {
+        queue.hasE2ECRC = { true }
+        queue.arm(.corruptField(index: 1), on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: protectedPayload))
+        let sent = try XCTUnwrap(sentData.first)
+        XCTAssertEqual(sent.count, protectedPayload.count)
+        XCTAssertEqual(sent[sent.startIndex + 1], 0x55 ^ 0xFF)
+        XCTAssertEqual(sent[sent.startIndex], 0x0F)
+        XCTAssertTrue(sent.isCRCValid, "only the field is wrong; the integrity check must still pass")
+    }
+
+    func testCorruptFieldWithoutACRCLeavesTheLengthAlone() {
+        queue.hasE2ECRC = { false }
+        queue.arm(.corruptField(index: 0), on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: Data([0x0F, 0x55])))
+        XCTAssertEqual(sentData.first, Data([0xF0, 0x55]))
+    }
+
+    func testCorruptFieldBeyondTheContentSendsIntact() {
+        queue.hasE2ECRC = { true }
+        queue.arm(.corruptField(index: 4), on: .any)   // bytes 4 and 5 are the CRC, not content
+        queue.addQueueItem(UUIDValuePair(uuid: statusChanged, value: protectedPayload))
+        XCTAssertEqual(sentData.first, protectedPayload)
+    }
+
     func testNamesComeFromTheOwningService() {
         XCTAssertEqual(FaultInjectingMessageQueue.name(of: statusChanged), InsulinDeliveryCharacteristicUUID.statusChanged.name)
         XCTAssertEqual(FaultInjectingMessageQueue.name(of: CBUUID(string: "2AA7")), CGMCharacteristicUUID.measurement.name)

@@ -15,9 +15,11 @@ struct FaultInjectionCard<Host: FaultInjectionHost>: View {
     @State private var target: FaultInjectingMessageQueue.Target = .any
     @State private var dropCount = 1
     @State private var delayEntry = "15"
+    @State private var truncateBytes = 1
+    @State private var fieldIndex = 1
 
     var body: some View {
-        RoundedCard(title: "Fault Injection", footer: "Acts on the next notification or indication the device sends on the chosen characteristic, then clears. Drop loses the message without disconnecting. Delay holds it for the given time, which may exceed the controller's command timeout. Swap holds the next message until the one after it and sends them in reverse order. Replay sends the last message that went out again. Read responses are not affected.") {
+        RoundedCard(title: "Fault Injection", footer: "Acts on the next notification or indication the device sends on the chosen characteristic, then clears. Drop loses the message without disconnecting. Delay holds it for the given time, which may exceed the controller's command timeout. Swap holds the next message until the one after it and sends them in reverse order. Replay sends the last message that went out again. Corrupt CRC flips a bit in the E2E-CRC trailer and Omit CRC removes it; both send the message intact when the device is not using E2E-CRC. Truncate cuts bytes off the end, so the length is wrong. Corrupt Byte inverts one byte of the content and recomputes the CRC, so only that field is malformed; byte 0 is the op code or flags, byte 1 the first operand. Read responses are not affected.") {
             Picker("Characteristic", selection: $target) {
                 ForEach(Host.faultTargets) { option in
                     Text(option.name).tag(option)
@@ -52,6 +54,28 @@ struct FaultInjectionCard<Host: FaultInjectionHost>: View {
                     .buttonStyle(.bordered)
                 Spacer()
                 Button("Replay Last") { host.replayLastMessage(on: target) }
+                    .buttonStyle(.bordered)
+            }
+
+            Divider()
+
+            HStack {
+                Button("Corrupt CRC") { host.armFault(.corruptCRC, on: target) }
+                    .buttonStyle(.bordered)
+                Spacer()
+                Button("Omit CRC") { host.armFault(.omitCRC, on: target) }
+                    .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Stepper("Truncate by \(truncateBytes)", value: $truncateBytes, in: 1...10)
+                Button("Arm") { host.armFault(.truncate(bytes: truncateBytes), on: target) }
+                    .buttonStyle(.bordered)
+            }
+
+            HStack {
+                Stepper("Corrupt byte \(fieldIndex)", value: $fieldIndex, in: 0...30)
+                Button("Arm") { host.armFault(.corruptField(index: fieldIndex), on: target) }
                     .buttonStyle(.bordered)
             }
 

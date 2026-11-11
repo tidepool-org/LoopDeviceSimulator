@@ -37,15 +37,32 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         case delayNext(seconds: TimeInterval)
         /// The next matching message waits for the one after it and the two go out in reverse order.
         case swapNextTwo
+        /// The next matching message goes out with a bit flipped in its E2E-CRC trailer.
+        case corruptCRC
+        /// The next matching message goes out without its E2E-CRC trailer.
+        case omitCRC
+        /// The next matching message goes out `bytes` short: wrong length, and a CRC that no longer matches.
+        case truncate(bytes: Int)
+        /// The next matching message goes out with byte `index` inverted and, when the payload carries an
+        /// E2E-CRC, the CRC recomputed, so the receiver sees an encoding fault rather than an integrity one.
+        case corruptField(index: Int)
 
         var description: String {
             switch self {
             case .dropNext(let count): return count == 1 ? "drop next" : "drop next \(count)"
             case .delayNext(let seconds): return "delay next by \(seconds.compactDescription) s"
             case .swapNextTwo: return "swap next two"
+            case .corruptCRC: return "corrupt CRC"
+            case .omitCRC: return "omit CRC"
+            case .truncate(let bytes): return bytes == 1 ? "truncate by 1 byte" : "truncate by \(bytes) bytes"
+            case .corruptField(let index): return "corrupt byte \(index)"
             }
         }
     }
+
+    /// Whether the device is sending with E2E-CRC trailers right now; the host answers from the mock's Feature.
+    /// Both services put a 16-bit CRC over everything before it at the end of the payload.
+    @ObservationIgnored var hasE2ECRC: () -> Bool = { false }
 
     /// A message held for a swap goes out on its own if nothing follows it within this time.
     static let swapHoldLimit: TimeInterval = 30
@@ -90,6 +107,10 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         case delay(TimeInterval)
         case hold
         case swap(with: UUIDValuePair)
+        /// Send a changed payload, with what changed.
+        case mutate(Data, String)
+        /// The fault did not apply to this payload; send it intact and say why.
+        case intact(String)
     }
 
     func addQueueItem(_ update: UUIDValuePair) {
@@ -114,6 +135,9 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
                 }
                 heldForSwap = update
                 return .hold
+            case .corruptCRC, .omitCRC, .truncate, .corruptField:
+                pending = nil
+                return Self.payloadAction(fault, on: update.value, hasCRC: hasE2ECRC())
             }
         }
 
@@ -121,6 +145,12 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         switch action {
         case .pass:
             inner.addQueueItem(update)
+        case .mutate(let data, let change):
+            inner.addQueueItem(UUIDValuePair(uuid: update.uuid, value: data, onSubscribedCentrals: update.onSubscribedCentrals))
+            note("\(change) on \(name): \(update.value.hexadecimalString) → \(data.hexadecimalString)")
+        case .intact(let reason):
+            inner.addQueueItem(update)
+            note("\(reason); \(name) sent intact")
         case .drop(let remaining):
             note("dropped \(name) \(update.value.hexadecimalString)" + (remaining > 0 ? ", \(remaining) more to drop" : ""))
         case .delay(let seconds):
@@ -196,6 +226,58 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         note("replayed \(Self.name(of: item.uuid)) \(item.value.hexadecimalString)")
         publish()
         return true
+    }
+
+    // MARK: Payload faults
+
+    private static func payloadAction(_ fault: Fault, on payload: Data, hasCRC: Bool) -> Action {
+        switch fault {
+        case .corruptCRC:
+            guard hasCRC else { return .intact("no CRC to corrupt") }
+            guard let data = corruptingCRC(payload) else { return .intact("payload too short to corrupt") }
+            return .mutate(data, "corrupted CRC")
+        case .omitCRC:
+            guard hasCRC else { return .intact("no CRC to omit") }
+            guard let data = omittingCRC(payload) else { return .intact("payload too short to omit the CRC") }
+            return .mutate(data, "omitted CRC")
+        case .truncate(let bytes):
+            guard let data = truncating(payload, by: bytes) else { return .intact("payload too short to truncate by \(bytes)") }
+            return .mutate(data, "truncated by \(bytes)")
+        case .corruptField(let index):
+            guard let data = corruptingField(payload, at: index, hasCRC: hasCRC) else { return .intact("payload has no byte \(index) to corrupt") }
+            return .mutate(data, "corrupted byte \(index)" + (hasCRC ? ", CRC recomputed" : ""))
+        default:
+            return .pass
+        }
+    }
+
+    /// Flips the low bit of the last CRC byte; nil when there is no room for a CRC.
+    static func corruptingCRC(_ payload: Data) -> Data? {
+        guard payload.count >= 2 else { return nil }
+        var data = payload
+        data[data.index(before: data.endIndex)] ^= 0x01
+        return data
+    }
+
+    /// Drops the two CRC bytes; nil when nothing would be left.
+    static func omittingCRC(_ payload: Data) -> Data? {
+        guard payload.count > 2 else { return nil }
+        return payload.dropLast(2)
+    }
+
+    /// Drops `bytes` from the end; nil when nothing would be left.
+    static func truncating(_ payload: Data, by bytes: Int) -> Data? {
+        guard bytes > 0, payload.count > bytes else { return nil }
+        return payload.dropLast(bytes)
+    }
+
+    /// Inverts byte `index` of the content (the part before any CRC) and recomputes the CRC when there is one,
+    /// so only the field is wrong; nil when the content has no such byte.
+    static func corruptingField(_ payload: Data, at index: Int, hasCRC: Bool) -> Data? {
+        var content = hasCRC ? Data(payload.dropLast(2)) : payload
+        guard index >= 0, index < content.count, !(hasCRC && payload.count < 2) else { return nil }
+        content[content.startIndex.advanced(by: index)] ^= 0xFF
+        return hasCRC ? content.appendingCRC() : content
     }
 
     // MARK: Reporting
