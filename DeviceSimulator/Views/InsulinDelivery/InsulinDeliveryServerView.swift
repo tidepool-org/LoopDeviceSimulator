@@ -83,8 +83,6 @@ struct InsulinDeliveryServerView: View {
             Divider()
             RoundedCardToggleRow(label: "Pump behaviour", enabled: $viewModel.isPumpBehaviourEnabled, toggleTintColor: .accentColor)
             Divider()
-            RoundedCardToggleRow(label: "E2E Protection Supported", enabled: $viewModel.isE2EProtectionSupported, toggleTintColor: .accentColor)
-            Divider()
             VStack {
                 RoundedCardToggleRow(label: "Authorization Control Required", enabled: $viewModel.isAuthorizationControlEnabled, toggleTintColor: .accentColor)
                 RoundedCardValueRow(label: "Secure Session", value: viewModel.isSecurityEstablished ? "established" : "not established", highlightValue: viewModel.isSecurityEstablished)
@@ -103,6 +101,8 @@ struct InsulinDeliveryServerView: View {
             RoundedCardToggleRow(label: "Ready to Disconnect", enabled: $viewModel.readyToDisconnect, toggleTintColor: .accentColor)
         }
 
+        pumpFeatureCard
+
         FaultInjectionCard(host: viewModel)
 
         RoundedCard(title: "Controls") {
@@ -111,6 +111,23 @@ struct InsulinDeliveryServerView: View {
         }
     }
     
+    /// Every flag the pump's Feature characteristic can advertise. Turning one off presents a pump without that
+    /// capability; the Feature is read, not indicated, so a controller sees the change on its next connection.
+    private var pumpFeatureCard: some View {
+        RoundedCard(title: "Pump Feature", footer: "What the pump advertises in its IDD Features characteristic. The controller reads it once per connection, so reconnect after a change. Turning E2E Protection off also stops the pump adding E2E counters and CRCs. Kept across relaunches.") {
+            ForEach(InsulinDeliveryServerViewModel.namedFeatures, id: \.name) { entry in
+                RoundedCardToggleRow(
+                    label: entry.name,
+                    enabled: Binding(
+                        get: { viewModel.isFeatureEnabled(entry.flag) },
+                        set: { viewModel.setFeature(entry.flag, enabled: $0) }
+                    ),
+                    toggleTintColor: .accentColor
+                )
+            }
+        }
+    }
+
     private var triggerAnnunciations: some View {
         RoundedCard(title: "Annunciations") {
             mockPumpIssueAnnunciation

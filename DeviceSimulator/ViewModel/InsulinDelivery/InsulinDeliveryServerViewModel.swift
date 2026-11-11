@@ -23,9 +23,40 @@ class InsulinDeliveryServerViewModel {
         var isPumpBehaviourEnabled = true
         var commandResponseOverride = CommandResponseOverride.normal.rawValue
         var bolusEntry = "1.0"
+        var featureFlags = InsulinDeliveryServerViewModel.defaultFeatureFlags.rawValue
 
         static let defaults = Settings()
     }
+
+    /// What the kit's pump advertises out of the box: basal, absolute temp basal, fast bolus with activation type.
+    static let defaultFeatureFlags: IDFeatureFlag = [.supportedBasalRate, .supportedTBRAbsolute, .supportedBolusFast, .supportedBolusActivationType]
+
+    /// Every flag the Feature characteristic can carry, in bit order, for the Pump Feature card.
+    static let namedFeatures: [(name: String, flag: IDFeatureFlag)] = [
+        ("E2E Protection", .supportedE2EProtection),
+        ("Basal Rate", .supportedBasalRate),
+        ("TBR Absolute", .supportedTBRAbsolute),
+        ("TBR Relative", .supportedTBRRelative),
+        ("TBR Template", .supportedTBRTemplate),
+        ("Bolus Fast", .supportedBolusFast),
+        ("Bolus Extended", .supportedBolusExtended),
+        ("Bolus Multiwave", .supportedBolusMultiwave),
+        ("Bolus Delay Time", .supportedBolusDelayTime),
+        ("Bolus Template", .supportedBolusTemplate),
+        ("Bolus Activation Type", .supportedBolusActivationType),
+        ("Multiple Bond", .supportedMultipleBond),
+        ("ISF Profile", .supportedProfileISF),
+        ("I:CHO Profile", .supportedProfileI2CHO),
+        ("Target Glucose Range Profile", .supportedProfileTargetGlucoseRange),
+        ("Insulin On Board", .supportedIOB),
+        ("Automatic Stop", .supportedAutomaticStop),
+        ("Local Bolus", .supportedLocalBolus),
+        ("Acoustic Signal Suspension", .supportedAcousticSignalSuspension),
+        ("Lifetime Warning Limit", .supportedWarningLimitLifetime),
+        ("Reservoir Level Warning Limit", .supportedWarningLimitReservoirLevel),
+        ("Insulin Delivery Start Sound", .supportedAcousticSignalStartInsulinDelivery),
+        ("Feature Extension", .supportedFeatureExtension),
+    ]
 
     init() {
         restoreSettings()
@@ -88,6 +119,24 @@ class InsulinDeliveryServerViewModel {
     var faultQueue: FaultInjectingMessageQueue? = nil
     var faultMessage: String? = nil
 
+    /// What the pump's Feature characteristic advertises. A controller reads it once per connection, so a
+    /// change shows up on the controller's next connection.
+    var featureFlags: IDFeatureFlag = InsulinDeliveryServerViewModel.defaultFeatureFlags
+
+    func isFeatureEnabled(_ flag: IDFeatureFlag) -> Bool {
+        featureFlags.contains(flag)
+    }
+
+    /// Turns one capability on or off; the pump stops advertising it, so a controller sees a device without it.
+    func setFeature(_ flag: IDFeatureFlag, enabled: Bool) {
+        guard isFeatureEnabled(flag) != enabled else { return }
+        let name = Self.namedFeatures.first { $0.flag == flag }?.name ?? String(describing: flag)
+        stimulus("Feature \(name) → \(enabled ? "on" : "off")")
+        if enabled { featureFlags.insert(flag) } else { featureFlags.remove(flag) }
+        mockInsulinDeliveryPump?.featureCharacteristic.flags = featureFlags
+        persistSettings()
+    }
+
     @ObservationIgnored var oobRandomNumberString: String {
         guard let oobString = mockInsulinDeliveryPump?.securityManager.configuration.oobRandomNumber else {
             return "Unknown"
@@ -142,7 +191,8 @@ class InsulinDeliveryServerViewModel {
     private var currentSettings: Settings {
         Settings(isPumpBehaviourEnabled: isPumpBehaviourEnabled,
                  commandResponseOverride: commandResponseOverride.rawValue,
-                 bolusEntry: bolusEntry)
+                 bolusEntry: bolusEntry,
+                 featureFlags: featureFlags.rawValue)
     }
 
     private func persistSettings() {
@@ -157,6 +207,7 @@ class InsulinDeliveryServerViewModel {
         isPumpBehaviourEnabled = settings.isPumpBehaviourEnabled
         commandResponseOverride = CommandResponseOverride(rawValue: settings.commandResponseOverride) ?? .normal
         bolusEntry = settings.bolusEntry
+        featureFlags = IDFeatureFlag(rawValue: settings.featureFlags)
     }
 
     private func restoreSettings() {
@@ -226,6 +277,7 @@ class InsulinDeliveryServerViewModel {
         // The tester's settings outlive a restart and a relaunch.
         pump.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         pump.commandResponseOverride = commandResponseOverride
+        pump.featureCharacteristic.flags = featureFlags
         pump.delegate = self
         mockInsulinDeliveryPump = pump
         mockPumpDidUpdate(pump)
@@ -469,18 +521,10 @@ extension InsulinDeliveryServerViewModel {
 // MARK: - E2E Protection Delegate
 
 extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
+    /// One of the Feature flags; kept as a property because the kit's E2E delegate reads it by this name.
     var isE2EProtectionSupported: Bool {
-        get {
-            mockInsulinDeliveryPump?.featureCharacteristic.flags.contains(.supportedE2EProtection) ?? false
-        }
-        set {
-            stimulus("E2E Protection Supported → \(newValue ? "on" : "off")")
-            if newValue {
-                mockInsulinDeliveryPump?.featureCharacteristic.flags.insert(.supportedE2EProtection)
-            } else {
-                mockInsulinDeliveryPump?.featureCharacteristic.flags.remove(.supportedE2EProtection)
-            }
-        }
+        get { isFeatureEnabled(.supportedE2EProtection) }
+        set { setFeature(.supportedE2EProtection, enabled: newValue) }
     }
 }
 
@@ -514,6 +558,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         isPumpReady = pump.operationalState == .ready
         isBasalProfileActivated = pump.basalRateProfileActivated
         commandResponseOverride = pump.commandResponseOverride
+        featureFlags = pump.featureCharacteristic.flags
         settingsStore.save(currentSettings, for: .pumpServer)
     }
 }

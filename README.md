@@ -22,6 +22,7 @@ Tester settings, pairings and device history survive an application restart. "Re
 | Pump command response override | Normal |
 | Pump server busy, procedure in progress, out-of-range schedule, ready to disconnect | off (session stimuli, cleared whenever the server stops, not kept across relaunch) |
 | Pump device bolus entry | 1.0 U |
+| Pump Feature flags | Basal Rate, TBR Absolute, Bolus Fast, Bolus Activation Type (E2E Protection off) |
 | Pump history | the kit's sample history |
 | CGM encrypted link | off |
 | CGM communication interval | 5 min |
