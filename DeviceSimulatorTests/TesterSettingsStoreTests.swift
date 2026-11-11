@@ -11,13 +11,18 @@ import XCTest
 
 /// The tester's configuration survives a relaunch and Reset to Defaults clears it.
 final class TesterSettingsStoreTests: XCTestCase {
+    private var suite: String!
     private var defaults: UserDefaults!
     private var store: TesterSettingsStore!
 
     override func setUp() {
-        let suite = "TesterSettingsStoreTests.\(UUID().uuidString)"
+        suite = "TesterSettingsStoreTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suite)
         store = TesterSettingsStore(defaults: defaults)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
     }
 
     func testPumpSettingsRoundTrip() {
@@ -54,16 +59,38 @@ final class TesterSettingsStoreTests: XCTestCase {
         XCTAssertNil(store.load(InsulinDeliveryServerViewModel.Settings.self, for: .pumpServer))
     }
 
-    func testForgetAllClearsEveryOwnerAndTheServerName() {
+    func testForgetClearsOneOwnerAndTheServerNameSeparately() {
         store.save(InsulinDeliveryServerViewModel.Settings.defaults, for: .pumpServer)
         store.save(CGMServerViewModel.Settings.defaults, for: .cgmServer)
         defaults.set("MyPump", forKey: TesterSettingsStore.serverNameKey)
 
-        store.forgetAll()
-
+        store.forget(.pumpServer)
         XCTAssertNil(store.load(InsulinDeliveryServerViewModel.Settings.self, for: .pumpServer))
-        XCTAssertNil(store.load(CGMServerViewModel.Settings.self, for: .cgmServer))
+        XCTAssertNotNil(store.load(CGMServerViewModel.Settings.self, for: .cgmServer))
+
+        store.forgetServerName()
         XCTAssertNil(defaults.string(forKey: TesterSettingsStore.serverNameKey))
+    }
+
+    /// Infinity and NaN have no JSON form; the store writes them as strings and reads them back.
+    func testNonFiniteValuesStillRoundTrip() {
+        var settings = CGMServerViewModel.Settings.defaults
+        settings.trace = .constant(mgdl: .infinity)
+        settings.clockOffset = .nan
+        store.save(settings, for: .cgmServer)
+
+        let reloaded = TesterSettingsStore(defaults: defaults).load(CGMServerViewModel.Settings.self, for: .cgmServer)
+        XCTAssertEqual(reloaded?.trace, .constant(mgdl: .infinity))
+        XCTAssertTrue(reloaded?.clockOffset.isNaN ?? false)
+    }
+
+    /// A save that cannot be written must not be remembered as the stored value.
+    func testASaveThatFailsIsNotCachedAsSaved() {
+        store.save(InsulinDeliveryServerViewModel.Settings.defaults, for: .pumpServer)
+        var changed = InsulinDeliveryServerViewModel.Settings.defaults
+        changed.bolusEntry = "3.0"
+        store.save(changed, for: .pumpServer)
+        XCTAssertEqual(TesterSettingsStore(defaults: defaults).load(InsulinDeliveryServerViewModel.Settings.self, for: .pumpServer)?.bolusEntry, "3.0")
     }
 
     func testAScenarioNoLongerBundledFallsBackToNoTrace() {

@@ -211,6 +211,7 @@ class CGMServerViewModel {
         var backfillDuration = BackfillDurationOption.oneHour.rawValue
         var calibrationSchedule = CalibrationScheduleOption.oncePerSession
         var warmupDuration = WarmupDurationOption.oneMinute.rawValue
+        var commandResponseOverride = CGMCommandResponseOverride.normal.rawValue
         var feature = CGMFeature.simulatorDefault
         var manualSensorStatus = CGMSensorStatusAnnunciation()
         var sessionRunTime = CGMSessionRunTime(hours: 240)
@@ -297,6 +298,16 @@ class CGMServerViewModel {
             guard oldValue != measurementInterval else { return }
             stimulus("Communication Interval → \(measurementInterval)")
             applyMeasurementInterval(to: sensor)
+            persistSettings()
+        }
+    }
+
+    /// Holds until the tester changes it; shown on the HUD while anything but Normal is selected.
+    var commandResponseOverride: CGMCommandResponseOverride = .normal {
+        didSet {
+            guard oldValue != commandResponseOverride else { return }
+            stimulus("Command Response → \(commandResponseOverride)")
+            sensor?.commandResponseOverride = commandResponseOverride
             persistSettings()
         }
     }
@@ -464,6 +475,7 @@ class CGMServerViewModel {
                                 backfillDuration: backfillDuration.rawValue,
                                 calibrationSchedule: calibrationSchedule,
                                 warmupDuration: warmupDuration.rawValue,
+                                commandResponseOverride: commandResponseOverride.rawValue,
                                 feature: preservedFeature,
                                 manualSensorStatus: preservedManualStatus,
                                 sessionRunTime: preservedRunTime,
@@ -505,6 +517,7 @@ class CGMServerViewModel {
         backfillDuration = BackfillDurationOption(rawValue: settings.backfillDuration) ?? .oneHour
         calibrationSchedule = settings.calibrationSchedule
         warmupDuration = WarmupDurationOption(rawValue: settings.warmupDuration) ?? .oneMinute
+        commandResponseOverride = CGMCommandResponseOverride(rawValue: settings.commandResponseOverride) ?? .normal
         preservedFeature = settings.feature
         preservedManualStatus = settings.manualSensorStatus
         preservedRunTime = settings.sessionRunTime
@@ -594,6 +607,7 @@ class CGMServerViewModel {
         applyMeasurementInterval(to: sensor)
         sensor.trace = preservedTrace
         sensor.isAuthorizationControlEnabled = isAuthorizationControlEnabled
+        sensor.commandResponseOverride = commandResponseOverride   // the override outlives a restart
         sensor.recordStore.capacity = preservedRecordCapacity
         sensor.recordsPerNotification = recordsPerNotification.rawValue
         sensor.alertLevels = preservedAlertLevels
@@ -1186,6 +1200,7 @@ extension CGMServerViewModel: MockCGMSensorDelegate {
             calibrationSchedule = option
         }
         isAuthorizationControlEnabled = sensor.isAuthorizationControlEnabled
+        commandResponseOverride = sensor.commandResponseOverride
         isSecurityEstablished = sensor.isSecurityEstablished
         oobRandomNumberString = String(data: sensor.securityManager.configuration.oobRandomNumber, encoding: .utf8) ?? ""
         persistSecurity(from: sensor)
