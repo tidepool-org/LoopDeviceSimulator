@@ -33,6 +33,7 @@ struct CGMSensorHUDView: View {
             glucoseHeadline
             statusChips
             quickSettings
+            responseOverrideSetting
             sparkline
                 .layoutPriority(1)   // sized before the spacer, so it reaches 110 pt whenever there is room
             quickActions
@@ -274,6 +275,31 @@ struct CGMSensorHUDView: View {
                 }
             }
         }
+    }
+
+    /// Replaces the sensor's answer to every collector command until set back to Normal; orange while it is on,
+    /// so a tester cannot forget it.
+    private var responseOverrideSetting: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Command Response")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Picker("Command Response", selection: $viewModel.commandResponseOverride) {
+                ForEach(CGMCommandResponseOverride.allCases, id: \.self) { option in
+                    Text(option.description).tag(option)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 10)
+        .background(
+            (viewModel.commandResponseOverride == .normal ? Color(.secondarySystemGroupedBackground) : Color.orange.opacity(0.15)),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
     }
 
     private func settingMenu<Content: View>(_ label: String, @ViewBuilder picker: () -> Content) -> some View {
