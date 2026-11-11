@@ -29,6 +29,9 @@ struct InsulinDeliveryServerView: View {
         }
             .tabViewStyle(.page(indexDisplayMode: .always))
             .indexViewStyle(.page(backgroundDisplayMode: .always))
+            // The page control sits at the TabView's bottom edge; lift it clear of the test-tool notice bar.
+            .padding(.bottom, 20)
+            .background(Color(.systemGroupedBackground))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -99,7 +102,9 @@ struct InsulinDeliveryServerView: View {
             RoundedCardToggleRow(label: "Out of Range Schedule", enabled: $viewModel.outOfRangeSchedule, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Ready to Disconnect", enabled: $viewModel.readyToDisconnect, toggleTintColor: .accentColor)
         }
-        
+
+        FaultInjectionCard(host: viewModel)
+
         RoundedCard(title: "Controls") {
             triggerAnnunciations
             sendSecureMessage

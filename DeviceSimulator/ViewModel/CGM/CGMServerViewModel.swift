@@ -292,6 +292,10 @@ class CGMServerViewModel {
     var isSecurityEstablished = false
     var oobRandomNumberString: String = ""
 
+    /// The queue the running sensor sends through; nil while powered off. Faults are session stimuli, not settings.
+    var faultQueue: FaultInjectingMessageQueue? = nil
+    var faultMessage: String? = nil
+
     var measurementInterval: MeasurementIntervalOption = .fiveMinutes {
         didSet {
             guard oldValue != measurementInterval else { return }
@@ -582,7 +586,9 @@ class CGMServerViewModel {
         self.server = server
         server.delegate = self
 
-        let messageQueue = MessageQueue(gattService: server)
+        // Every notification and indication the sensor sends passes through here, so the tester can fault it.
+        let messageQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
+        faultQueue = messageQueue
         let sensor = MockCGMSensor(
             gattServer: server,
             messageQueue: messageQueue,
@@ -654,6 +660,8 @@ class CGMServerViewModel {
         server?.disconnect()
         server = nil
         sensor = nil
+        faultQueue = nil
+        faultMessage = nil
         numberOfSubscribedDevices = 0
         procedureAlreadyInProgress = false
         outOfRangeSchedule = false
@@ -1083,6 +1091,35 @@ extension CGMServerViewModel: GATTServiceDelegate {
 
     func isOutOfRange() -> Bool {
         outOfRangeSchedule
+    }
+}
+
+// MARK: - Fault Injection
+
+extension CGMServerViewModel: FaultInjectionHost {
+    static let faultTargets: [FaultInjectingMessageQueue.Target] = [
+        .any,
+        .init(name: "Measurement", uuid: CGMCharacteristicUUID.measurement.cbUUID),
+        .init(name: "Feature", uuid: CGMCharacteristicUUID.feature.cbUUID),
+        .init(name: "Record Access Control Point", uuid: CGMCharacteristicUUID.recordAccessControlPoint.cbUUID),
+        .init(name: "Specific Ops Control Point", uuid: CGMCharacteristicUUID.specificOpsControlPoint.cbUUID),
+        .init(name: "AC Data Out (secure)", uuid: ACCharacteristicUUID.dataOutIndicate.cbUUID),
+    ]
+
+    func armFault(_ fault: FaultInjectingMessageQueue.Fault, on target: FaultInjectingMessageQueue.Target) {
+        stimulus("Fault armed: \(fault) on \(target.name.lowercased())")
+        faultMessage = nil
+        faultQueue?.arm(fault, on: target)
+    }
+
+    func disarmFault() {
+        stimulus("Fault disarmed")
+        faultQueue?.disarm()
+    }
+
+    func replayLastMessage(on target: FaultInjectingMessageQueue.Target) {
+        stimulus("Replay last message on \(target.name.lowercased())")
+        faultMessage = faultQueue?.replayLast(on: target) == true ? nil : "Nothing has been sent on \(target.name.lowercased()) yet"
     }
 }
 
