@@ -140,6 +140,29 @@ class InsulinDeliveryServerViewModel {
         outOfRangeMessage = nil
     }
 
+    /// How far back the recorded reservoir event is dated, in minutes.
+    var staleMinutesEntry: String = "30"
+
+    /// Writes a Reservoir Remaining Amount Changed event with the typed level, dated back by the typed minutes,
+    /// and raises the History Event Recorded flag so the controller fetches it.
+    func recordStaleReservoirEvent() {
+        guard let level = outOfRangeReservoirEntry.parsedDouble, level.isFinite else {
+            outOfRangeMessage = "Enter a numeric level in units"
+            return
+        }
+        guard let minutes = Int(staleMinutesEntry.trimmingCharacters(in: .whitespaces)), minutes >= 0 else {
+            outOfRangeMessage = "Minutes old must be a whole number, 0 or more"
+            return
+        }
+        guard let pump = mockInsulinDeliveryPump else {
+            outOfRangeMessage = "The pump is powered off"
+            return
+        }
+        stimulus("Record Reservoir Event: \(level.compactDescription) U dated \(minutes) min back")
+        pump.recordReservoirLevelEvent(level, backdatedBy: .minutes(minutes))
+        outOfRangeMessage = nil
+    }
+
     /// What the pump's Feature characteristic advertises. A controller reads it once per connection, so a
     /// change shows up on the controller's next connection.
     var featureFlags: IDFeatureFlag = InsulinDeliveryServerViewModel.defaultFeatureFlags

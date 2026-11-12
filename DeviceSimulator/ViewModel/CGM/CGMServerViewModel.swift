@@ -255,6 +255,8 @@ class CGMServerViewModel {
     var lastInjectedFaultString: String = "none"
     /// A glucose the tester wants sent as is, past the sensor range; the entry stays for the next use.
     var outOfRangeGlucoseEntry: String = "700"
+    /// How far back the sent reading is dated, in minutes of session time; 0 sends it as current.
+    var staleMinutesEntry: String = "0"
     var outOfRangeMessage: String? = nil
 
     /// Reset to Defaults puts power back to on without starting a server the root screen is not showing.
@@ -854,13 +856,17 @@ class CGMServerViewModel {
             outOfRangeMessage = "Enter a numeric mg/dL value"
             return
         }
+        guard let minutesOld = Int(staleMinutesEntry.trimmingCharacters(in: .whitespaces)), minutesOld >= 0 else {
+            outOfRangeMessage = "Minutes old must be a whole number, 0 or more"
+            return
+        }
         // The stimulus is logged only for a reading that went out; a refusal is its own line.
-        guard let sensor, sensor.reportReading(glucose: glucose) != nil else {
+        guard let sensor, sensor.reportReading(glucose: glucose, minutesOld: minutesOld) != nil else {
             outOfRangeMessage = "No reading sent: the session must be running and past warm-up on a healthy sensor"
             SessionLog.shared.log(.lifecycle, "Send Reading Now refused: the sensor cannot read")
             return
         }
-        stimulus("Send Reading Now: \(glucose.compactDescription) mg/dL unclamped")
+        stimulus("Send Reading Now: \(glucose.compactDescription) mg/dL unclamped" + (minutesOld > 0 ? ", dated \(minutesOld) min back" : ""))
         outOfRangeMessage = nil
     }
 
