@@ -64,6 +64,21 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
     /// Both services put a 16-bit CRC over everything before it at the end of the payload.
     @ObservationIgnored var hasE2ECRC: () -> Bool = { false }
 
+    /// Whether a payload on `uuid` carries a CRC trailer when the device uses E2E-CRC. The CGM RACP never does,
+    /// and the secure AC Data Out segments are ciphertext with no trailer of their own.
+    static func carriesCRC(_ uuid: CBUUID, deviceHasCRC: Bool) -> Bool {
+        guard deviceHasCRC else { return false }
+        let uncovered: Set<CBUUID> = [
+            CGMCharacteristicUUID.recordAccessControlPoint.cbUUID,
+            ACCharacteristicUUID.dataOutIndicate.cbUUID,
+            ACCharacteristicUUID.dataOutNotify.cbUUID,
+        ]
+        return !uncovered.contains(uuid)
+    }
+
+    /// Bumped by `emptyQueue()`, so a release scheduled before the queue was emptied knows not to send.
+    @ObservationIgnored private var generation = 0
+
     /// A message held for a swap goes out on its own if nothing follows it within this time.
     static let swapHoldLimit: TimeInterval = 30
 
@@ -104,8 +119,8 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
     private enum Action {
         case pass
         case drop(remaining: Int)
-        case delay(TimeInterval)
-        case hold
+        case delay(TimeInterval, generation: Int)
+        case hold(generation: Int)
         case swap(with: UUIDValuePair)
         /// Send a changed payload, with what changed.
         case mutate(Data, String)
@@ -126,7 +141,7 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
             case .delayNext(let seconds):
                 pending = nil
                 delayedCount += 1
-                return .delay(seconds)
+                return .delay(seconds, generation: generation)
             case .swapNextTwo:
                 if let first = heldForSwap {
                     heldForSwap = nil
@@ -134,10 +149,10 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
                     return .swap(with: first)
                 }
                 heldForSwap = update
-                return .hold
+                return .hold(generation: generation)
             case .corruptCRC, .omitCRC, .truncate, .corruptField:
                 pending = nil
-                return Self.payloadAction(fault, on: update.value, hasCRC: hasE2ECRC())
+                return Self.payloadAction(fault, on: update.value, uuid: update.uuid, hasCRC: Self.carriesCRC(update.uuid, deviceHasCRC: hasE2ECRC()))
             }
         }
 
@@ -153,18 +168,24 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
             note("\(reason); \(name) sent intact")
         case .drop(let remaining):
             note("dropped \(name) \(update.value.hexadecimalString)" + (remaining > 0 ? ", \(remaining) more to drop" : ""))
-        case .delay(let seconds):
+        case .delay(let seconds, let scheduled):
             note("holding \(name) \(update.value.hexadecimalString) for \(seconds.compactDescription) s")
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [self] in
-                lock.withLock { delayedCount -= 1 }
+                // An emptied queue (an RACP Abort, a stop) has already dropped this message.
+                let stillWanted: Bool = lock.withLock {
+                    guard scheduled == generation else { return false }
+                    delayedCount -= 1
+                    return true
+                }
+                guard stillWanted else { return }
                 inner.addQueueItem(update)
                 note("released \(name) after \(seconds.compactDescription) s")
             }
-        case .hold:
+        case .hold(let scheduled):
             note("holding \(name) \(update.value.hexadecimalString) until the next message, to send them out of order")
             DispatchQueue.main.asyncAfter(deadline: .now() + Self.swapHoldLimit) { [self] in
                 let stillHeld: UUIDValuePair? = lock.withLock {
-                    guard let held = heldForSwap, held.uuid == update.uuid, held.value == update.value else { return nil }
+                    guard scheduled == generation, let held = heldForSwap, held.uuid == update.uuid, held.value == update.value else { return nil }
                     heldForSwap = nil
                     pending = nil
                     return held
@@ -181,10 +202,13 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         publish()
     }
 
+    /// Drops everything pending, including messages still held or delayed here; their scheduled releases see the
+    /// new generation and do nothing.
     func emptyQueue() {
         lock.withLock {
             heldForSwap = nil
             delayedCount = 0
+            generation += 1
         }
         inner.emptyQueue()
         publish()
@@ -230,7 +254,18 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
 
     // MARK: Payload faults
 
-    private static func payloadAction(_ fault: Fault, on payload: Data, hasCRC: Bool) -> Action {
+    private static func payloadAction(_ fault: Fault, on payload: Data, uuid: CBUUID, hasCRC: Bool) -> Action {
+        // A CGM Measurement notification can carry several records, each with its own CRC; a field fault
+        // touches the first record only and leaves the others, CRCs included, as they were.
+        if case .corruptField(let index) = fault,
+           uuid == CGMCharacteristicUUID.measurement.cbUUID,
+           let ranges = cgmRecordRanges(payload), ranges.count > 1 {
+            let first = Data(payload[ranges[0]])
+            guard let corrupted = corruptingField(first, at: index, hasCRC: hasCRC) else {
+                return .intact("the first record has no byte \(index) to corrupt")
+            }
+            return .mutate(corrupted + payload[ranges[0].upperBound...], "corrupted byte \(index) of the first record" + (hasCRC ? ", its CRC recomputed" : ""))
+        }
         switch fault {
         case .corruptCRC:
             guard hasCRC else { return .intact("no CRC to corrupt") }
@@ -249,6 +284,20 @@ final class FaultInjectingMessageQueue: MessagingQueue, InspectableMessagingQueu
         default:
             return .pass
         }
+    }
+
+    /// The records in a CGM Measurement payload, each starting with its Size byte (which counts the whole
+    /// record, CRC included); nil when the sizes do not account for the payload exactly.
+    static func cgmRecordRanges(_ payload: Data) -> [Range<Data.Index>]? {
+        var ranges: [Range<Data.Index>] = []
+        var offset = payload.startIndex
+        while offset < payload.endIndex {
+            let size = Int(payload[offset])
+            guard size >= 1, offset + size <= payload.endIndex else { return nil }
+            ranges.append(offset..<(offset + size))
+            offset += size
+        }
+        return ranges.isEmpty ? nil : ranges
     }
 
     /// Flips the low bit of the last CRC byte; nil when there is no room for a CRC.

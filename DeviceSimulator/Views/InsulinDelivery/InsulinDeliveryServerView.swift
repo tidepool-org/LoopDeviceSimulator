@@ -94,11 +94,29 @@ struct InsulinDeliveryServerView: View {
             }
         }
 
-        RoundedCard(title: "Error Handling") {
+        RoundedCard(title: "Error Handling", footer: "Report Reservoir Once makes the next Status carry the typed level instead of the real one, indicated at once to a subscribed controller or served on its next read; the pump's valid range is 0 up to its fill level, so -1 and 999 are both out of range. The level after that is the real one again.") {
             RoundedCardToggleRow(label: "Server Busy", enabled: $viewModel.isServerBusy, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Procedure Already In Progress", enabled: $viewModel.procedureAlreadyInProgress, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Out of Range Schedule", enabled: $viewModel.outOfRangeSchedule, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Ready to Disconnect", enabled: $viewModel.readyToDisconnect, toggleTintColor: .accentColor)
+            Divider()
+            HStack {
+                Text("Out-of-range reservoir")
+                Spacer()
+                TextField("U", text: $viewModel.outOfRangeReservoirEntry)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+                Text("U")
+            }
+            Button("Report Reservoir Once", action: viewModel.reportOutOfRangeReservoir)
+                .disabled(!viewModel.isPumpPoweredOn)
+            if let message = viewModel.outOfRangeMessage {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
         }
 
         pumpFeatureCard

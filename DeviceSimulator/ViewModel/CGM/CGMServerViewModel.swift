@@ -253,6 +253,9 @@ class CGMServerViewModel {
         }
     }
     var lastInjectedFaultString: String = "none"
+    /// A glucose the tester wants sent as is, past the sensor range; the entry stays for the next use.
+    var outOfRangeGlucoseEntry: String = "700"
+    var outOfRangeMessage: String? = nil
 
     /// Reset to Defaults puts power back to on without starting a server the root screen is not showing.
     @ObservationIgnored private var isResetting = false
@@ -844,6 +847,23 @@ class CGMServerViewModel {
         sensor?.takeMeasurement()
     }
 
+    /// Sends one reading with the entered glucose exactly as typed, past the sensor range and without the
+    /// range bits, so a collector's own validation is what gets tested.
+    func sendOutOfRangeReading() {
+        guard let glucose = outOfRangeGlucoseEntry.parsedDouble, glucose.isFinite else {
+            outOfRangeMessage = "Enter a numeric mg/dL value"
+            return
+        }
+        // The stimulus is logged only for a reading that went out; a refusal is its own line.
+        guard let sensor, sensor.reportReading(glucose: glucose) != nil else {
+            outOfRangeMessage = "No reading sent: the session must be running and past warm-up on a healthy sensor"
+            SessionLog.shared.log(.lifecycle, "Send Reading Now refused: the sensor cannot read")
+            return
+        }
+        stimulus("Send Reading Now: \(glucose.compactDescription) mg/dL unclamped")
+        outOfRangeMessage = nil
+    }
+
     // MARK: - Lifecycle
 
     func replaceSensor() {
@@ -1106,6 +1126,34 @@ extension CGMServerViewModel: GATTServiceDelegate {
 
     func isOutOfRange() -> Bool {
         outOfRangeSchedule
+    }
+}
+
+// MARK: - Settings decoding
+
+extension CGMServerViewModel.Settings {
+    /// Keys added since a build was installed decode to their defaults, so an upgrade keeps what the tester had
+    /// instead of resetting everything because one key is missing.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Self()
+        requiresEncryption = try c.decodeIfPresent(Bool.self, forKey: .requiresEncryption) ?? d.requiresEncryption
+        measurementInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .measurementInterval) ?? d.measurementInterval
+        recordsPerNotification = try c.decodeIfPresent(Int.self, forKey: .recordsPerNotification) ?? d.recordsPerNotification
+        backfillDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .backfillDuration) ?? d.backfillDuration
+        calibrationSchedule = try c.decodeIfPresent(CalibrationScheduleOption.self, forKey: .calibrationSchedule) ?? d.calibrationSchedule
+        warmupDuration = try c.decodeIfPresent(TimeInterval.self, forKey: .warmupDuration) ?? d.warmupDuration
+        commandResponseOverride = try c.decodeIfPresent(String.self, forKey: .commandResponseOverride) ?? d.commandResponseOverride
+        feature = try c.decodeIfPresent(CGMFeature.self, forKey: .feature) ?? d.feature
+        manualSensorStatus = try c.decodeIfPresent(CGMSensorStatusAnnunciation.self, forKey: .manualSensorStatus) ?? d.manualSensorStatus
+        sessionRunTime = try c.decodeIfPresent(CGMSessionRunTime.self, forKey: .sessionRunTime) ?? d.sessionRunTime
+        trace = try c.decodeIfPresent(Trace.self, forKey: .trace) ?? d.trace
+        recordCapacity = try c.decodeIfPresent(Int.self, forKey: .recordCapacity) ?? d.recordCapacity
+        alertLevels = try c.decodeIfPresent(AlertLevels.self, forKey: .alertLevels) ?? d.alertLevels
+        sensorRangeLow = try c.decodeIfPresent(Double.self, forKey: .sensorRangeLow) ?? d.sensorRangeLow
+        sensorRangeHigh = try c.decodeIfPresent(Double.self, forKey: .sensorRangeHigh) ?? d.sensorRangeHigh
+        traceEffects = try c.decodeIfPresent(CGMTraceEffects.self, forKey: .traceEffects) ?? d.traceEffects
+        clockOffset = try c.decodeIfPresent(TimeInterval.self, forKey: .clockOffset) ?? d.clockOffset
     }
 }
 

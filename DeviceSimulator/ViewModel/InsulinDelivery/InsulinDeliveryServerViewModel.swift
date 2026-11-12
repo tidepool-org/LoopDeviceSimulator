@@ -31,6 +31,8 @@ class InsulinDeliveryServerViewModel {
     /// What the kit's pump advertises out of the box: basal, absolute temp basal, fast bolus with activation type.
     static let defaultFeatureFlags: IDFeatureFlag = [.supportedBasalRate, .supportedTBRAbsolute, .supportedBolusFast, .supportedBolusActivationType]
 
+    // MARK: - Tester settings
+
     /// Every flag the Feature characteristic can carry, in bit order, for the Pump Feature card.
     static let namedFeatures: [(name: String, flag: IDFeatureFlag)] = [
         ("E2E Protection", .supportedE2EProtection),
@@ -118,6 +120,25 @@ class InsulinDeliveryServerViewModel {
     /// The queue the running pump sends through; nil while powered off. Faults are session stimuli, not settings.
     var faultQueue: FaultInjectingMessageQueue? = nil
     var faultMessage: String? = nil
+
+    /// A reservoir level the tester wants the pump to report once, out of range or not; the entry stays for reuse.
+    var outOfRangeReservoirEntry: String = "-1"
+    var outOfRangeMessage: String? = nil
+
+    /// One Status indication, or the next Status read, carries the typed level instead of the real one.
+    func reportOutOfRangeReservoir() {
+        guard let level = outOfRangeReservoirEntry.parsedDouble, level.isFinite else {
+            outOfRangeMessage = "Enter a numeric level in units"
+            return
+        }
+        guard let pump = mockInsulinDeliveryPump else {
+            outOfRangeMessage = "The pump is powered off"
+            return
+        }
+        stimulus("Report Reservoir Once: \(level.compactDescription) U")
+        pump.reportReservoirLevelOnce(level)
+        outOfRangeMessage = nil
+    }
 
     /// What the pump's Feature characteristic advertises. A controller reads it once per connection, so a
     /// change shows up on the controller's next connection.
@@ -397,6 +418,21 @@ extension InsulinDeliveryServerViewModel: FaultInjectionHost {
     }
 }
 
+// MARK: - Settings decoding
+
+extension InsulinDeliveryServerViewModel.Settings {
+    /// Keys added since a build was installed decode to their defaults, so an upgrade keeps what the tester had
+    /// instead of resetting everything because one key is missing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = Self()
+        isPumpBehaviourEnabled = try container.decodeIfPresent(Bool.self, forKey: .isPumpBehaviourEnabled) ?? defaults.isPumpBehaviourEnabled
+        commandResponseOverride = try container.decodeIfPresent(String.self, forKey: .commandResponseOverride) ?? defaults.commandResponseOverride
+        bolusEntry = try container.decodeIfPresent(String.self, forKey: .bolusEntry) ?? defaults.bolusEntry
+        featureFlags = try container.decodeIfPresent(UInt32.self, forKey: .featureFlags) ?? defaults.featureFlags
+    }
+}
+
 // MARK: - Console Out Delegate
 
 extension InsulinDeliveryServerViewModel: ConsoleOutDelegate {
@@ -515,16 +551,6 @@ extension InsulinDeliveryServerViewModel {
 
     private func persistSecurity(from pump: MockInsulinDeliveryPump) {
         securityStore.save(SecurityState(configuration: pump.securityManager.configuration, sharedKeyData: pump.sharedKeyData), for: .pumpServer)
-    }
-}
-
-// MARK: - E2E Protection Delegate
-
-extension InsulinDeliveryServerViewModel: E2EProtectionDelegate {
-    /// One of the Feature flags; kept as a property because the kit's E2E delegate reads it by this name.
-    var isE2EProtectionSupported: Bool {
-        get { isFeatureEnabled(.supportedE2EProtection) }
-        set { setFeature(.supportedE2EProtection, enabled: newValue) }
     }
 }
 
