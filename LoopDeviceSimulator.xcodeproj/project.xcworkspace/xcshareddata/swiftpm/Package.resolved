@@ -16,7 +16,7 @@
       "location" : "https://github.com/tidepool-org/ContinuousGlucoseMonitorServiceKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "91480b939261158091736157760c29e6420228c0"
+        "revision" : "8e81df7ba58719144c6240d3f6d6b24c902797cd"
       }
     },
     {
@@ -34,7 +34,7 @@
       "location" : "https://github.com/tidepool-org/InsulinDeliveryServiceKit.git",
       "state" : {
         "branch" : "dev",
-        "revision" : "0d7a4e3ba08f0f4b7de78d55e87bbce844a94507"
+        "revision" : "50561729369285654ab662c2db1cdb27577df61f"
       }
     }
   ],
