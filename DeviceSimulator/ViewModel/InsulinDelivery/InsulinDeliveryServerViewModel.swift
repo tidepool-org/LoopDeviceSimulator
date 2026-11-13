@@ -357,9 +357,31 @@ class InsulinDeliveryServerViewModel {
         therapyActionMessage = nil
         bolusActionMessage = nil
         maxBolusAmount = 0
+        deviceFaultDescription = nil
         isBasalProfileComplete = false
         isPumpReady = false
         isBasalProfileActivated = false
+    }
+
+    // MARK: Internal failure
+
+    /// What the tester has broken, by its annunciation; nil while the pump is sound.
+    var deviceFaultDescription: String? = nil
+    var isDeviceFaulted: Bool { deviceFaultDescription != nil }
+    /// The failures a tester can pick; System Issue is the generic one.
+    static let deviceFaultTypes: [AnnunciationType] = [.systemIssue, .mechanicalIssue, .occlusionDetected]
+
+    /// Breaks the pump while connected: delivery stops, Standby, an annunciation of `type`; commands are refused
+    /// until Clear Fault.
+    func failDevice(with type: AnnunciationType) {
+        stimulus("Fail Pump: \(type.description)")
+        mockInsulinDeliveryPump?.failDevice(with: type)
+        therapyActionMessage = nil
+    }
+
+    func clearDeviceFault() {
+        stimulus("Clear Pump Fault")
+        mockInsulinDeliveryPump?.clearDeviceFault()
     }
 
     /// Therapy control from the pump itself rather than from the controller, as a user would on the device.
@@ -608,6 +630,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         isBasalProfileActivated = pump.basalRateProfileActivated
         commandResponseOverride = pump.commandResponseOverride
         featureFlags = pump.featureCharacteristic.flags
+        deviceFaultDescription = pump.deviceFault?.description
         settingsStore.save(currentSettings, for: .pumpServer)
     }
 }

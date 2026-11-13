@@ -98,7 +98,7 @@ struct InsulinDeliveryPumpHUDView: View {
         VStack(alignment: .leading, spacing: 10) {
             chipRow {
                 chip("Therapy", viewModel.therapyStateString, tint: viewModel.isTherapyRunning ? .green : .gray)
-                chip("Pump", viewModel.operationalStateString, tint: .gray)
+                chip("Pump", viewModel.deviceFaultDescription.map { "fault: \($0)" } ?? viewModel.operationalStateString, tint: viewModel.isDeviceFaulted ? .red : .gray)
                 chip("Temp Basal", viewModel.isTempBasal ? "active" : "none", tint: viewModel.isTempBasal ? .blue : .gray)
             }
             chipRow {
@@ -258,8 +258,32 @@ struct InsulinDeliveryPumpHUDView: View {
                     .multilineTextAlignment(.center)
             }
             bolusAction
+            faultActions
         }
         .frame(maxWidth: .infinity)
+    }
+
+    /// An internal failure while the link stays up, and the way back from it.
+    private var faultActions: some View {
+        HStack(spacing: 10) {
+            Menu {
+                ForEach(InsulinDeliveryServerViewModel.deviceFaultTypes, id: \.self) { type in
+                    Button(type.description) { viewModel.failDevice(with: type) }
+                }
+            } label: {
+                actionLabel("Fail Pump")
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(!viewModel.isPumpPoweredOn || viewModel.isDeviceFaulted)
+            Button {
+                viewModel.clearDeviceFault()
+            } label: {
+                actionLabel("Clear Fault")
+            }
+            .buttonStyle(.bordered)
+            .disabled(!viewModel.isDeviceFaulted)
+        }
     }
 
     /// A fast bolus entered on the pump, the way a user would at the device; the controller learns of it
