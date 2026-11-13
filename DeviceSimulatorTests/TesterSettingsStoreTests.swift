@@ -93,6 +93,26 @@ final class TesterSettingsStoreTests: XCTestCase {
         XCTAssertEqual(TesterSettingsStore(defaults: defaults).load(InsulinDeliveryServerViewModel.Settings.self, for: .pumpServer)?.bolusEntry, "3.0")
     }
 
+    /// A blob written by an older build lacks the keys added since; they come back as defaults, the rest survives.
+    func testOlderPumpSettingsWithoutNewKeysKeepWhatTheyHad() throws {
+        defaults.set(Data(#"{"isPumpBehaviourEnabled":false,"commandResponseOverride":"fail","bolusEntry":"2.5"}"#.utf8), forKey: "testerSettings.pumpServer")
+        let loaded = try XCTUnwrap(store.load(InsulinDeliveryServerViewModel.Settings.self, for: .pumpServer))
+        XCTAssertFalse(loaded.isPumpBehaviourEnabled)
+        XCTAssertEqual(loaded.commandResponseOverride, "fail")
+        XCTAssertEqual(loaded.bolusEntry, "2.5")
+        XCTAssertEqual(loaded.featureFlags, InsulinDeliveryServerViewModel.defaultFeatureFlags.rawValue)
+    }
+
+    func testOlderCGMSettingsWithoutNewKeysKeepWhatTheyHad() throws {
+        defaults.set(Data(#"{"requiresEncryption":true,"warmupDuration":300,"sensorRangeHigh":350}"#.utf8), forKey: "testerSettings.cgmServer")
+        let loaded = try XCTUnwrap(store.load(CGMServerViewModel.Settings.self, for: .cgmServer))
+        XCTAssertTrue(loaded.requiresEncryption)
+        XCTAssertEqual(loaded.warmupDuration, 300)
+        XCTAssertEqual(loaded.sensorRangeHigh, 350)
+        XCTAssertEqual(loaded.commandResponseOverride, CGMServerViewModel.Settings.defaults.commandResponseOverride)
+        XCTAssertEqual(loaded.trace, CGMServerViewModel.Settings.defaults.trace)
+    }
+
     func testAScenarioNoLongerBundledFallsBackToNoTrace() {
         let stored = CGMServerViewModel.Settings.Trace.scenario(name: "not a bundled scenario")
         XCTAssertNil(stored.trace)

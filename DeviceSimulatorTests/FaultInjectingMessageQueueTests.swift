@@ -172,6 +172,53 @@ final class FaultInjectingMessageQueueTests: XCTestCase {
         XCTAssertEqual(sentData.first, protectedPayload)
     }
 
+    func testEmptyingTheQueueCancelsADelayedRelease() {
+        queue.arm(.delayNext(seconds: 0.2), on: .any)
+        queue.addQueueItem(item(statusChanged, 1))
+        queue.emptyQueue()   // an RACP Abort or a stop
+        XCTAssertFalse(queue.hasMessagesInQueue)
+
+        let waited = expectation(description: "waited past the delay")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { waited.fulfill() }
+        wait(for: [waited], timeout: 2)
+        XCTAssertEqual(sentValues, [], "the aborted message must not surface later")
+        XCTAssertFalse(queue.hasMessagesInQueue)
+    }
+
+    func testCGMRACPAndSecureDataOutCarryNoCRC() {
+        let cgmRACP = CGMCharacteristicUUID.recordAccessControlPoint.cbUUID
+        XCTAssertFalse(FaultInjectingMessageQueue.carriesCRC(cgmRACP, deviceHasCRC: true))
+        XCTAssertFalse(FaultInjectingMessageQueue.carriesCRC(ACCharacteristicUUID.dataOutIndicate.cbUUID, deviceHasCRC: true))
+        XCTAssertTrue(FaultInjectingMessageQueue.carriesCRC(CGMCharacteristicUUID.measurement.cbUUID, deviceHasCRC: true))
+        XCTAssertTrue(FaultInjectingMessageQueue.carriesCRC(InsulinDeliveryCharacteristicUUID.recordAccessControlPoint.cbUUID, deviceHasCRC: true))
+
+        queue.hasE2ECRC = { true }
+        queue.arm(.corruptCRC, on: .any)
+        let response = Data([0x06, 0x00, 0x01, 0x01])
+        queue.addQueueItem(UUIDValuePair(uuid: cgmRACP, value: response))
+        XCTAssertEqual(sentData.first, response, "no CRC to corrupt on the CGM RACP; sent intact")
+    }
+
+    /// Two CGM records, each with its own CRC: the field fault touches the first and leaves the second valid.
+    func testCorruptFieldOnAMultiRecordMeasurementKeepsTheOtherRecordsIntact() throws {
+        func record(glucose: UInt8) -> Data {
+            var body = Data([0x00, 0x00, glucose, 0x00, 0x05, 0x00])   // size placeholder, flags, glucose SFLOAT, time offset
+            body[0] = UInt8(body.count + 2)
+            return body.appendingCRC()
+        }
+        let first = record(glucose: 0x64), second = record(glucose: 0x6E)
+        queue.hasE2ECRC = { true }
+        queue.arm(.corruptField(index: 2), on: .any)
+        queue.addQueueItem(UUIDValuePair(uuid: CGMCharacteristicUUID.measurement.cbUUID, value: first + second))
+
+        let sent = try XCTUnwrap(sentData.first)
+        XCTAssertEqual(sent.count, first.count + second.count)
+        let sentFirst = sent.prefix(first.count), sentSecond = sent.suffix(second.count)
+        XCTAssertEqual(sentFirst[sentFirst.startIndex + 2], 0x64 ^ 0xFF)
+        XCTAssertTrue(Data(sentFirst).isCRCValid, "the first record's CRC was recomputed")
+        XCTAssertEqual(Data(sentSecond), second, "the second record is untouched")
+    }
+
     func testNamesComeFromTheOwningService() {
         XCTAssertEqual(FaultInjectingMessageQueue.name(of: statusChanged), InsulinDeliveryCharacteristicUUID.statusChanged.name)
         XCTAssertEqual(FaultInjectingMessageQueue.name(of: CBUUID(string: "2AA7")), CGMCharacteristicUUID.measurement.name)

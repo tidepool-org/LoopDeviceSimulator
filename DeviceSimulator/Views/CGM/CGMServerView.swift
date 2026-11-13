@@ -365,12 +365,40 @@ struct CGMServerView: View {
     }
 
     private var errorHandlingCard: some View {
-        RoundedCard(title: "Error Handling", footer: "Next Payload Fault corrupts one message and then clears: Omit CRC drops the E2E-CRC trailer, Corrupt CRC flips a bit in it, Truncate cuts the payload short. It applies to the next read response, notification or indication of a CGMS characteristic while the Feature keeps advertising E2E-CRC, so the collector's integrity-failure handling runs instead of a re-read of the Feature. The CRC faults wait for a payload that carries a CRC (RACP has none) and are no-ops with E2E-CRC off.") {
+        RoundedCard(title: "Error Handling", footer: "Next Payload Fault corrupts one message and then clears: Omit CRC drops the E2E-CRC trailer, Corrupt CRC flips a bit in it, Truncate cuts the payload short. It applies to the next read response, notification or indication of a CGMS characteristic while the Feature keeps advertising E2E-CRC, so the collector's integrity-failure handling runs instead of a re-read of the Feature. The CRC faults wait for a payload that carries a CRC (RACP has none) and are no-ops with E2E-CRC off. Send Reading Now takes one reading with the typed glucose exactly as typed: no sensor-range clamp and no Device Can Process bit, so 700, 0 or a negative value reaches the collector. Dated back by N minutes gives that reading a Time Offset N minutes earlier than now (never before the session start), so it arrives stale and out of sequence, in the record store as well.") {
             RoundedCardToggleRow(label: "Procedure Already In Progress", enabled: $viewModel.procedureAlreadyInProgress, toggleTintColor: .accentColor)
             RoundedCardToggleRow(label: "Out of Range Schedule", enabled: $viewModel.outOfRangeSchedule, toggleTintColor: .accentColor)
             Divider()
             LabeledSegmentedPicker("Next Payload Fault", selection: $viewModel.integrityFault)
             RoundedCardValueRow(label: "Last Injected", value: viewModel.lastInjectedFaultString)
+            Divider()
+            HStack {
+                Text("Out-of-range glucose")
+                Spacer()
+                TextField("mg/dL", text: $viewModel.outOfRangeGlucoseEntry)
+                    .keyboardType(.numbersAndPunctuation)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+                Text("mg/dL")
+            }
+            HStack {
+                Text("Dated back by")
+                Spacer()
+                TextField("min", text: $viewModel.staleMinutesEntry)
+                    .keyboardType(.numberPad)
+                    .textFieldStyle(.roundedBorder)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 90)
+                Text("min")
+            }
+            Button("Send Reading Now", action: viewModel.sendOutOfRangeReading)
+                .disabled(!viewModel.isSessionRunning)
+            if let message = viewModel.outOfRangeMessage {
+                Text(message)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 }
