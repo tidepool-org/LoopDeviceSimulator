@@ -24,6 +24,7 @@ Tester settings, pairings and device history survive an application restart. "Re
 | Pump device bolus entry | 1.0 U |
 | Pump Feature flags | Basal Rate, TBR Absolute, Bolus Fast, Bolus Activation Type (E2E Protection off) |
 | Pump history | the kit's sample history |
+| Pump state (reservoir, basal profile, therapy and operational state, delivery totals) | a fresh pump; otherwise it survives power off and relaunch, with a bolus or temp basal running at power-off recorded as aborted |
 | CGM encrypted link | off |
 | CGM communication interval | 5 min |
 | CGM records per notification | 8 |
