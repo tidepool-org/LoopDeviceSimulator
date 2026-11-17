@@ -229,6 +229,7 @@ class InsulinDeliveryServerViewModel {
     @ObservationIgnored private let securityStore = SecurityStateStore.shared
     @ObservationIgnored private let historyStore = DeviceHistoryStore.shared
     @ObservationIgnored private let settingsStore = TesterSettingsStore.shared
+    @ObservationIgnored private let pumpStateStore = PumpStateStore.shared
 
     // MARK: Tester settings
 
@@ -270,6 +271,7 @@ class InsulinDeliveryServerViewModel {
         securityStore.forget(.pumpServer)
         securityStore.setAuthorizationControlEnabled(false, for: .pumpServer)
         historyStore.forget(.pumpServer)
+        pumpStateStore.forget()
 
         apply(.defaults)
         isMirroring = true
@@ -312,12 +314,20 @@ class InsulinDeliveryServerViewModel {
         // Every notification and indication the pump sends passes through here, so the tester can fault it.
         let messageQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
         faultQueue = messageQueue
-        let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue)
+        // A pump that was powered off comes back as it was: reservoir, profile, therapy and operational state.
+        let restoredStatus = pumpStateStore.load().flatMap(MockInsulinDeliveryPumpStatus.init(rawValue:))
+        let pump = MockInsulinDeliveryPump(gattServer: server, messageQueue: messageQueue, status: restoredStatus)
         messageQueue.hasE2ECRC = { [weak pump] in pump?.isE2EProtectionSupported ?? false }
         // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
         restoreSecurity(on: pump)
         restoreHistory(on: pump)   // before the delegate, so the restore itself is not persisted half-way
+        if restoredStatus != nil {
+            // Closes what was being delivered at power-off and resumes the schedule from now; records go in
+            // the restored history, so this comes after it.
+            pump.resumeAfterPowerCycle()
+            SessionLog.shared.log(.lifecycle, "pump state restored: \(pump.therapyState), \(pump.operationalState), reservoir \(pump.reservoirRemaining.compactDescription) U")
+        }
         // The tester's settings outlive a restart and a relaunch.
         pump.isPumpBehaviourEnabled = isPumpBehaviourEnabled
         pump.commandResponseOverride = commandResponseOverride
@@ -338,6 +348,7 @@ class InsulinDeliveryServerViewModel {
         if let pump = mockInsulinDeliveryPump {
             SessionLog.shared.log(.lifecycle, "pump server stopped")
             persistHistory(from: pump)
+            pumpStateStore.save(pump.persistedState, force: true)   // the stamp is the power-off moment on restore
             settingsStore.save(currentSettings, for: .pumpServer)
         }
         server?.disconnect()
@@ -631,6 +642,7 @@ extension InsulinDeliveryServerViewModel: MockInsulinDeliveryPumpDelegate {
         commandResponseOverride = pump.commandResponseOverride
         featureFlags = pump.featureCharacteristic.flags
         deviceFaultDescription = pump.deviceFault?.description
+        pumpStateStore.save(pump.persistedState)
         settingsStore.save(currentSettings, for: .pumpServer)
     }
 }
