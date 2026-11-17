@@ -348,7 +348,7 @@ class InsulinDeliveryServerViewModel {
         if let pump = mockInsulinDeliveryPump {
             SessionLog.shared.log(.lifecycle, "pump server stopped")
             persistHistory(from: pump)
-            pumpStateStore.save(pump.persistedState)
+            pumpStateStore.save(pump.persistedState, force: true)   // the stamp is the power-off moment on restore
             settingsStore.save(currentSettings, for: .pumpServer)
         }
         server?.disconnect()

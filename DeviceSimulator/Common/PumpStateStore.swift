@@ -7,7 +7,8 @@
 //
 //  Keeps the simulated pump's state (reservoir, profile, therapy and operational state, delivery totals)
 //  across a power cycle and an app relaunch, the way a real pump keeps its own. One property list in
-//  Application Support/HYDRA, written only when the state changes. Reset to Defaults drops it.
+//  Application Support/HYDRA, written when the state changes, about once a minute while only the accounting
+//  stamp moves, and when the server stops. Reset to Defaults drops it.
 
 import Foundation
 
@@ -36,16 +37,20 @@ final class PumpStateStore {
         return value
     }
 
-    /// The pump stamps every accounting run, even when nothing was delivered; that stamp alone is not a change
-    /// worth a write. Whenever insulin moves the totals change with it and the stamp is saved along.
-    static let volatileKeys: Set<String> = ["lastDeliveryUpdate"]
+    /// The pump stamps every accounting run, even when nothing was delivered. The restore reads that stamp as the
+    /// moment the pump went off, and while a temp basal runs it is the only value that moves (the temp's units are
+    /// counted when it ends), so a stamp-only change is written about once a minute rather than on every tick.
+    static let stampKey = "lastDeliveryUpdate"
+    static let stampInterval: TimeInterval = 60
 
-    /// Writes only when the state differs from the last save or load; a state that cannot be serialised is dropped.
-    func save(_ state: [String: Any]) {
+    /// Writes when the state differs from the last save or load, when the stamp has moved by `stampInterval`, or
+    /// when forced (the server stopping). A state that cannot be serialised is dropped.
+    func save(_ state: [String: Any], force: Bool = false) {
         let dictionary = state as NSDictionary
         let unchanged: Bool = lock.withLock {
-            guard let lastSaved else { return false }
-            return Self.stripped(lastSaved).isEqual(Self.stripped(dictionary))
+            guard !force, let lastSaved, Self.stripped(lastSaved).isEqual(Self.stripped(dictionary)) else { return false }
+            guard let old = lastSaved[Self.stampKey] as? Date, let new = state[Self.stampKey] as? Date else { return true }
+            return new.timeIntervalSince(old) < Self.stampInterval
         }
         guard !unchanged, let data = try? PropertyListSerialization.data(fromPropertyList: dictionary, format: .binary, options: 0) else { return }
         lock.withLock { lastSaved = dictionary }
@@ -54,7 +59,7 @@ final class PumpStateStore {
     }
 
     private static func stripped(_ dictionary: NSDictionary) -> NSDictionary {
-        (dictionary as? [String: Any] ?? [:]).filter { !volatileKeys.contains($0.key) } as NSDictionary
+        (dictionary as? [String: Any] ?? [:]).filter { $0.key != stampKey } as NSDictionary
     }
 
     func forget() {
