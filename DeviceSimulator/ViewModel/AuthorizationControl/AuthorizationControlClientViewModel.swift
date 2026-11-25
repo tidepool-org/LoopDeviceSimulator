@@ -234,6 +234,8 @@ class AuthorizationControlClientViewModel: ObservableObject {
 extension AuthorizationControlClientViewModel: AuthorizationControlControllerDelegate {
     func peripheralDiscovered(sender: AuthorizationControlController, peripheralID: UUID, peripheralName: String, advertisingName: String, serviceData: [CBUUID: Data]?, rssi: NSNumber) {
         let device = Device(name: peripheralName, uuid: peripheralID.uuidString, advertisedName: advertisingName, rssi: rssi, serviceData: serviceData)
+        // Every new scan (power-on, refresh, after a disconnect) reports the same peripheral again; keep one row per peripheral.
+        deviceList.removeAll { $0.uuid == device.uuid }
         deviceList.append(device)
         deviceList.sort(by: { $0.rssi.compare($1.rssi) == .orderedDescending })
     }

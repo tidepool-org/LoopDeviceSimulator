@@ -60,7 +60,7 @@ struct DeviceListView: View {
                 }
             }
             Text(prompt)
-            ForEach(devices, id: \.self) { device in
+            ForEach(devices, id: \.uuid) { device in
                 RoundedCard {
                     Button(action: { onSelect(device) }) {
                         DeviceView(device: device)
