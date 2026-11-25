@@ -118,7 +118,9 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
         let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
         let peripheralName = peripheral.name ?? advertisedName ?? "Unnamed \(peripheral.identifier.uuidString.prefix(8))"
         self.delegate?.peripheralDiscovered(sender: self, peripheralID: peripheral.identifier, peripheralName: peripheralName, advertisingName: advertisedName ?? "unknown", serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? nil, rssi: RSSI)
-        self.peripheralArray.append(peripheral)
+        if !self.peripheralArray.contains(where: { $0.identifier == peripheral.identifier }) {
+            self.peripheralArray.append(peripheral)
+        }
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {

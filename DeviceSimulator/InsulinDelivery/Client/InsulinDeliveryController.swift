@@ -126,7 +126,9 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
         print(peripheral, " AD data: ", advertisementData, " services: ", peripheral.services as Any)
         guard let peripheralName = peripheral.name else { return }
         self.delegate?.peripheralDiscovered(sender: self, peripheralID: peripheral.identifier, peripheralName: peripheralName, advertisingName: advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? "unknown", serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? nil, rssi: RSSI)
-        self.peripheralArray.append(peripheral)
+        if !self.peripheralArray.contains(where: { $0.identifier == peripheral.identifier }) {
+            self.peripheralArray.append(peripheral)
+        }
     }
 
     public func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
