@@ -113,8 +113,11 @@ public class AuthorizationControlController: NSObject, CBCentralManagerDelegate,
 
     public func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         print(peripheral, " AD data: ", advertisementData, " services: ", peripheral.services as Any)
-        guard let peripheralName = peripheral.name else { return }
-        self.delegate?.peripheralDiscovered(sender: self, peripheralID: peripheral.identifier, peripheralName: peripheralName, advertisingName: advertisementData[CBAdvertisementDataLocalNameKey] as? String ?? "unknown", serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? nil, rssi: RSSI)
+        // A backgrounded simulator (or any peripheral) may advertise ACS without a name the system has cached yet;
+        // dropping it would hide a perfectly connectable server. Fall back to the advertised or a placeholder name.
+        let advertisedName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let peripheralName = peripheral.name ?? advertisedName ?? "Unnamed \(peripheral.identifier.uuidString.prefix(8))"
+        self.delegate?.peripheralDiscovered(sender: self, peripheralID: peripheral.identifier, peripheralName: peripheralName, advertisingName: advertisedName ?? "unknown", serviceData: advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data] ?? nil, rssi: RSSI)
         self.peripheralArray.append(peripheral)
     }
 
