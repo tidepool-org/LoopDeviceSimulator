@@ -13,40 +13,44 @@ struct AuthorizationControlClientView: View {
     @ObservedObject var viewModel: AuthorizationControlClientViewModel
     
     var body: some View {
-        if viewModel.isPeripheralConnected {
-            VStack {
-                RoundedCardScrollView(title: "Authorization Control") {
-                    RoundedCard {
-                        Button(action: viewModel.stopClient) {
-                            Text(viewModel.connectedMessage)
-                            Spacer()
+        Group {
+            if viewModel.isPeripheralConnected {
+                VStack {
+                    RoundedCardScrollView(title: "Authorization Control") {
+                        RoundedCard {
+                            Button(action: viewModel.stopClient) {
+                                Text(viewModel.connectedMessage)
+                                Spacer()
+                            }
+                            Divider()
+                            Button(action: viewModel.switchToPeripheralList) {
+                                Text("Display Peripheral List")
+                                Spacer()
+                            }
+                            Divider()
+                            Button(action: viewModel.clearConsole) {
+                                Text("Clear Console")
+                                Spacer()
+                            }
                         }
-                        Divider()
-                        Button(action: viewModel.switchToPeripheralList) {
-                            Text("Display Peripheral List")
-                            Spacer()
-                        }
-                        Divider()
-                        Button(action: viewModel.clearConsole) {
-                            Text("Clear Console")
-                            Spacer()
-                        }
-                    }
-                    
-                    configurationControls
-                    
-                    readCharacteristics
-                    
-                    controlPointControls
-                    
-                    secureRequestControls
 
-                    ConsoleView(title: "Console", output: viewModel.consoleMessages)
+                        configurationControls
+
+                        readCharacteristics
+
+                        controlPointControls
+
+                        secureRequestControls
+
+                        ConsoleView(title: "Console", output: viewModel.consoleMessages)
+                    }
                 }
+            } else {
+                deviceList
             }
-        } else {
-            deviceList
         }
+        .onAppear(perform: { viewModel.startClient() })
+        .onDisappear(perform: { viewModel.stopClient() })
     }
     
     @ViewBuilder
