@@ -130,7 +130,9 @@ final class IDSv2WireTests: XCTestCase {
         XCTAssertEqual(data.count, IDFeatureDataHandlerEnhancement.expectedLength)
         switch IDFeatureDataHandlerEnhancement.handleData(data) {
         case .success(let features):
-            XCTAssertEqual(features.flags, characteristic.flags)
+            // The server may add flags of its own on top of the tester's; what was set must come back.
+            XCTAssertTrue(features.flags.isSuperset(of: characteristic.flags), "\(features.flags.v2Description)")
+            XCTAssertTrue(features.flags.contains(.supportedAcousticSignalStartInsulinDelivery))
             XCTAssertEqual(features.insulinConcentration, 100)
         case .failure(let error):
             XCTFail("feature characteristic did not parse: \(error)")
@@ -158,6 +160,26 @@ final class IDSv2WireTests: XCTestCase {
         XCTAssertEqual(Int8(bitPattern: v2.eventData[9]), -16)
         XCTAssertEqual(v2.recordNumber, 9)
         XCTAssertEqual((v2 as? ReferenceTimeHistoryEventEnhancement)?.timeZoneAndDSTOffset, .hours(-4))
+    }
+
+    func testAnnunciationAuxInfoRoundTripsFromServerToClient() {
+        let characteristic = IDAnnunciationStatusCharacteristicEnhancement(messageQueue: MessageQueue(gattService: MockGattServer()))
+        for (type, expected) in [
+            (AnnunciationType.bolusCanceled, "bolusID: 1, bolusType: fast, programmed: 4.0 U, delivered: 2.0 U"),
+            (.tempBasalOver, "tbrType: absolute, programmedAdjustment: 2.0 U/h, durationProgrammed: 60 min, durationEffective: 60 min, delivered: 2.0 U"),
+            (.tempBasalCanceled, "tbrType: absolute, programmedAdjustment: 2.0 U/h, durationProgrammed: 60 min, durationEffective: 30 min, delivered: 1.0 U"),
+        ] {
+            let annunciation = characteristic.generateAnnunciation(for: type)
+            let data = characteristic.createData(for: annunciation)
+            guard case .success(let parsed?) = IDAnnunciationStatusDataHandler.handleData(data, e2eProtectionSupported: false) else {
+                return XCTFail("\(type) did not parse: \(data.hexadecimalString)")
+            }
+            XCTAssertEqual(parsed.type, type)
+            XCTAssertEqual(parsed.identifier, annunciation?.identifier)
+            XCTAssertEqual(AnnunciationAuxInfo.describe(type: parsed.type, auxiliaryData: parsed.auxiliaryData), expected, "\(type): \(parsed.auxiliaryData.hexadecimalString)")
+        }
+        // Types without a v2 AuxInfo layout are left to the raw hex.
+        XCTAssertNil(AnnunciationAuxInfo.describe(type: .automaticStop, auxiliaryData: Data()))
     }
 
     func testDeliveredBasalRateChangedGainsTheAmountDelivered() {

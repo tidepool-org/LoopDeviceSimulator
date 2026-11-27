@@ -246,7 +246,9 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     var autoStopCounter: UInt16 { UInt16(autoStopCounterString) ?? 15 }
     @Published var resetAutoStopMessage: String? = nil
     @Published var lastUserInteractionString: String = ""
-    var lastUserInteraction: UInt16 { UInt16(lastUserInteractionString) ?? 15 }
+    // Minutes since the user last touched the client; empty means just now. The pump refuses a value above its
+    // counter with Procedure Not Applicable, so a stale default would fail right after Automatic Stop is enabled.
+    var lastUserInteraction: UInt16 { UInt16(lastUserInteractionString) ?? 0 }
     
     @Published var suspendSignalMessage: String? = nil
     @Published var suspendSignalStatus: Bool = true

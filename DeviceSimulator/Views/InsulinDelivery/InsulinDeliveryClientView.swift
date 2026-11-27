@@ -39,8 +39,6 @@ struct InsulinDeliveryClientView: View {
                         
                         statusReaderControls
                         
-                        selectedStatus
-                        
                         commandControls
                         
                         racpControls
@@ -204,9 +202,12 @@ struct InsulinDeliveryClientView: View {
         }
     }
     
-    @ViewBuilder
-    private var selectedStatus: some View {
-        RoundedCard(title: "Get Selected Status Information") {
+    /// Get Selected Status Information: one write that asks for several indications and responses at once.
+    private var getSelectedStatusInformation: some View {
+        VStack {
+            Divider()
+            Text("Get Selected Status Information")
+                .font(.headline)
             Toggle("Status", isOn: $viewModel.selectedStatus)
             Toggle("Status Changed", isOn: $viewModel.selectedStatusChanged)
             Toggle("Annunciation Status", isOn: $viewModel.selectedAnnunciationStatus)
@@ -219,16 +220,14 @@ struct InsulinDeliveryClientView: View {
             Toggle("Total Daily Insulin", isOn: $viewModel.selectedTotalDailyInsulin)
             Toggle("Get Delivered Insulin", isOn: $viewModel.selectedDeliveredInsulin)
             Button(action: viewModel.getSelectedStatusInformation) {
-                Text("Get Selected Status")
+                Text("Get Selected Status Information")
             }
-            .padding()
             if let message = viewModel.selectedStatusMessage {
                 MessageView(message: message)
             }
-        }
+        }.padding(.vertical)
     }
 
-    
     private var statusReaderControls: some View {
         RoundedCard(title: "Status Reader") {
             resetStatus
@@ -239,6 +238,7 @@ struct InsulinDeliveryClientView: View {
             getCounter
             getDeliveredInsulin
             getInsulinOnBoard
+            getSelectedStatusInformation
         }
     }
     
@@ -687,11 +687,14 @@ struct InsulinDeliveryClientView: View {
         }
     }
 
+    /// Its own procedure: tells the pump how many minutes ago the user last touched the client, so the pump can
+    /// wind its Automatic Stop counter back to that. Empty means just now.
     private var resetAutoStopTimeoutControls: some View {
         VStack {
+            Divider()
             HStack {
-                Text("Last User Interaction")
-                NumberEntryEntryView(title: "Enter value", number: $viewModel.lastUserInteractionString)
+                Text("Last User Interaction (min ago)")
+                NumberEntryEntryView(title: "0", number: $viewModel.lastUserInteractionString)
             }
             Button(action: viewModel.resetAutoStopTimeout) {
                 Text("Reset Automatic Stop Timeout")

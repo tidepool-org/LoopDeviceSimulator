@@ -191,10 +191,19 @@ struct InsulinDeliveryServerView: View {
         }
     }
     
+    /// The Status characteristic's Flags field; a change indicates Status to a subscribed controller.
     private var statusFlags: some View {
-        RoundedCard(title: "Status Flags") {
-            Divider()
-            MultiSelectionCheckList(items: IDStatusFlag.allCases, selectedItems: $viewModel.statusFlags)
+        RoundedCard(title: "Status Flags", footer: "Reservoir Remaining Amount Accurate is dropped for a Status that reports a tester's one-off reservoir level, since that is not the pump's real level.") {
+            ForEach(IDStatusFlag.namedFlags, id: \.name) { entry in
+                RoundedCardToggleRow(
+                    label: entry.name,
+                    enabled: Binding(
+                        get: { viewModel.isStatusFlagEnabled(entry.flag) },
+                        set: { viewModel.setStatusFlag(entry.flag, enabled: $0) }
+                    ),
+                    toggleTintColor: .accentColor
+                )
+            }
         }
     }
     

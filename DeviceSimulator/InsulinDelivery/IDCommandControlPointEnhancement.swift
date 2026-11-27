@@ -158,16 +158,20 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             return CBATTError.Code.success
         case .resetAutomaticStopTimeout:
             let lastIntereactionInterval = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            let comparison = "last user interaction \(lastIntereactionInterval) min, counter \(automaticStopCounter) min, timeout \(automaticStopTimeout) min"
             guard lastIntereactionInterval <= automaticStopTimeout else {
+                ConsoleOut.shared.logMessage(message: "Reset Automatic Stop Timeout refused, above the timeout: \(comparison)")
                 response(to: .resetAutomaticStopTimeout, with: .parameterOutOfRange)
                 return CBATTError.Code.success
             }
-            
+
             guard lastIntereactionInterval <= automaticStopCounter else {
+                ConsoleOut.shared.logMessage(message: "Reset Automatic Stop Timeout refused, above the counter: \(comparison)")
                 response(to: .resetAutomaticStopTimeout, with: .procedureNotApplicable)
                 return CBATTError.Code.success
             }
-            
+
+            ConsoleOut.shared.logMessage(message: "Reset Automatic Stop Timeout: \(comparison); counter set to \(lastIntereactionInterval) min")
             automaticStopCounter = lastIntereactionInterval
             hasAutomaticStopFired = false
             respondWithSuccess(to: .resetAutomaticStopTimeout)

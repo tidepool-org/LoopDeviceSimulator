@@ -37,6 +37,8 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
     var willAbort = false
     var completion: MessageCompletion?
     var features: IDFeatureFlag = []
+    /// Set while a response is handled, so the kit sees the E2E layout its bytes have; see `handlingResponse`.
+    private var e2eForCurrentResponse: Bool?
     var basalProfile: [BasalSegment] = [
         BasalSegment(index: 1, rate: 1.1, duration: .minutes(240)),
         BasalSegment(index: 2, rate: 1.2, duration: .minutes(240)),
@@ -178,6 +180,12 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
                 print("\(characteristic.uuid): properties contains .write")
             }
             peripheral.discoverDescriptors(for: characteristic)
+            // Features decide whether E2E counters and CRCs are expected on everything else, so they are read
+            // as soon as the pump is connected rather than waiting for the tester to ask.
+            if characteristic.uuid == InsulinDeliveryCharacteristicUUID.features.cbUUID {
+                ConsoleOut.shared.logMessage(message: "Read_Request \(characteristic.uuid) (automatic, for the E2E Protection flag)")
+                peripheral.readValue(for: characteristic)
+            }
         }
     }
 
@@ -216,50 +224,86 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.status.cbUUID:
             print("Data from status characteristic")
-            let result = IDStatusDataHandler.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
-            message = String(describing: result)
+            // Status is 5 octets, or 8 with E2E. The value says which; the cached Features may predate a change
+            // to the pump's E2E Protection flag, and a tester reading Status first has no Features yet.
+            let hasE2E = e2eProtection(forLength: characteristicData.count, plainLength: 5)
+            let result = IDStatusDataHandler.handleData(characteristicData, e2eProtectionSupported: hasE2E)
+            switch result {
+            case .success(let status):
+                // The kit's description of the flags only names Reservoir Attached.
+                message = "success(therapyControlState: \(status.therapyControlState), operationalState: \(status.operationalState), remainingReservoir: \(status.remainingReservoir), flags: \(status.flags.v2Description))"
+            default:
+                message = String(describing: result)
+            }
+            message.append(e2eMismatchNote(hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
             delegate?.characteristicIndicationMessage(characteristic.uuid, message: message)
             return
         case InsulinDeliveryCharacteristicUUID.statusChanged.cbUUID:
             print("Data from status changed characteristic")
-            let result = IDStatusChangedDataHandlerEnhancement.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
+            // Status Changed is 2 octets, or 5 with E2E; decided from the value as for Status.
+            let hasE2E = e2eProtection(forLength: characteristicData.count, plainLength: 2)
+            let result = IDStatusChangedDataHandlerEnhancement.handleData(characteristicData, e2eProtectionSupported: hasE2E)
             message = String(describing: result)
+            message.append(e2eMismatchNote(hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
             delegate?.characteristicIndicationMessage(characteristic.uuid, message: message)
             return
         case InsulinDeliveryCharacteristicUUID.annunciationStatus.cbUUID:
             print("Data from annunciation status characteristic")
             let result = IDAnnunciationStatusDataHandler.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
-            message = String(describing: result)
+            switch result {
+            case .success(let annunciation?):
+                // The kit files the v2 types under its manufacturer-specific fallback; name them.
+                message = "success(identifier: \(annunciation.identifier), type: \(annunciation.type.displayName) (0x\(String(annunciation.type.rawValue, radix: 16))), status: \(annunciation.status), auxiliaryData: \(annunciation.auxiliaryData.hexadecimalString))"
+                // Bolus Canceled and the TBR types carry fields v2 defines; show them decoded.
+                if let auxInfo = AnnunciationAuxInfo.describe(type: annunciation.type, auxiliaryData: annunciation.auxiliaryData) {
+                    message.append("\nAuxInfo: \(auxInfo)")
+                }
+            case .success(nil):
+                message = "success(no annunciation)"
+            default:
+                message = String(describing: result)
+            }
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
             delegate?.characteristicIndicationMessage(characteristic.uuid, message: message)
             return
         case InsulinDeliveryCharacteristicUUID.statusReaderControlPoint.cbUUID:
             print("Data from status reader control point")
-            let result = statusReaderControlPoint.handleResponse(characteristicData)
-            message = String(describing: result)
+            let result = handlingResponse(characteristicData) { statusReaderControlPoint.handleResponse(characteristicData) }
+            message = describeStatusReaderResult(result.result.result)
+            message.append(e2eMismatchNote(result.hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.commandControlPoint.cbUUID:
             print("Data from command control point")
             // The pump sent v2 opcodes; the kit's handler knows the v1 values.
-            let result = commandControlPoint.handleResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: isE2EProtectionSupported))
-            message = String(describing: result)
+            let result = handlingResponse(characteristicData) { hasE2E in
+                commandControlPoint.handleResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: hasE2E))
+            }
+            message = String(describing: result.result)
+            message.append(e2eMismatchNote(result.hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.commandData.cbUUID:
             print("Data from command data")
-            let result = commandControlPoint.handleCommandDataResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: isE2EProtectionSupported))
-            message = String(describing: result)
+            let result = handlingResponse(characteristicData) { hasE2E in
+                commandControlPoint.handleCommandDataResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: hasE2E))
+            }
+            message = String(describing: result.result)
+            message.append(e2eMismatchNote(result.hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.recordAccessControlPoint.cbUUID:
             print("Data from record access control point")
-            let result = racp.handleResponse(characteristicData)
-            message = String(describing: result)
+            let result = handlingResponse(characteristicData) { racp.handleResponse(characteristicData) }
+            message = String(describing: result.result)
+            message.append(e2eMismatchNote(result.hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.historyData.cbUUID:
             print("Data from history data")
-            let result = IDHistoryDataDataHandlerEnhancement.handleData(characteristicData, e2eProtectionSupported: isE2EProtectionSupported)
-            message = String(describing: result)
+            let result = handlingResponse(characteristicData) { hasE2E in
+                IDHistoryDataDataHandlerEnhancement.handleData(characteristicData, e2eProtectionSupported: hasE2E)
+            }
+            message = String(describing: result.result)
+            message.append(e2eMismatchNote(result.hasE2E))
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case DeviceTimeCharacteristicUUID.deviceTime.cbUUID:
             print("Data from device time")
@@ -882,8 +926,72 @@ extension InsulinDeliveryController: BolusManagerDelegate {
     }
 }
 
+// MARK: - E2E protection
+
 extension InsulinDeliveryController: E2EProtectionDelegate {
+    /// What the last Features read said; overridden while one response is handled whose bytes say otherwise.
     public var isE2EProtectionSupported: Bool {
+        e2eForCurrentResponse ?? featuresSayE2E
+    }
+
+    private var featuresSayE2E: Bool {
         features.contains(.supportedE2EProtection)
+    }
+
+    /// Whether a fixed-size value carries the E2E counter and CRC (three extra octets), judged from its length.
+    /// Falls back to the cached Features for a length that is neither.
+    func e2eProtection(forLength length: Int, plainLength: Int) -> Bool {
+        switch length {
+        case plainLength: return false
+        case plainLength + 3: return true
+        default: return isE2EProtectionSupported
+        }
+    }
+
+    /// Whether a control point response carries E2E protection. With Features saying it is on, that stands, so
+    /// a corrupted CRC is still reported as one. With Features saying it is off, a response that nevertheless
+    /// ends in a valid CRC was sent with it on: the pump's flag changed after the last Features read.
+    func inferredE2E(for response: Data) -> Bool {
+        featuresSayE2E || (response.count >= 4 && response.isCRCValid)
+    }
+
+    /// Runs a kit handler with the E2E layout the response actually has. The kit's handlers ask this controller,
+    /// as their E2E delegate, whether to expect a counter and CRC, so the answer is pinned for the duration.
+    func handlingResponse<T>(_ response: Data, _ handle: (_ hasE2E: Bool) -> T) -> (result: T, hasE2E: Bool) {
+        let hasE2E = inferredE2E(for: response)
+        e2eForCurrentResponse = hasE2E
+        defer { e2eForCurrentResponse = nil }
+        return (handle(hasE2E), hasE2E)
+    }
+
+    func handlingResponse<T>(_ response: Data, _ handle: () -> T) -> (result: T, hasE2E: Bool) {
+        handlingResponse(response) { _ in handle() }
+    }
+
+    /// Flags a value whose E2E layout disagrees with the Features the client last read.
+    func e2eMismatchNote(_ hasE2E: Bool) -> String {
+        guard hasE2E != featuresSayE2E else { return "" }
+        return " (value \(hasE2E ? "carries" : "lacks") E2E protection but the last Features read says E2E is \(featuresSayE2E ? "on" : "off"); re-read IDD Feature)"
+    }
+}
+
+// MARK: - Readable results
+
+extension InsulinDeliveryController {
+    /// The kit returns the Status Reader results as bare tuples; name the fields of the ones that read badly.
+    func describeStatusReaderResult(_ result: DeviceCommResult<Any?>) -> String {
+        guard case .success(let payload) = result, let payload else { return String(describing: result) }
+        switch payload {
+        case let (bolus, basal) as (Double, Double):
+            return "success(bolusDelivered: \(bolus) U, basalDelivered: \(basal) U)"
+        case let (bolus, basal, total) as (Double, Double, Double):
+            return "success(totalDailyBolus: \(bolus) U, totalDailyBasal: \(basal) U, totalDailyInsulin: \(total) U)"
+        case let (type, selection, value) as (CounterType, CounterValueSelection, TimeInterval):
+            return "success(counter: \(type), \(selection): \(Int(value.minutes)) min)"
+        case let (amount, duration) as (Double, TimeInterval?):
+            return "success(insulinOnBoard: \(amount) U, remaining: \(duration.map { "\(Int($0.minutes)) min" } ?? "not present"))"
+        default:
+            return String(describing: result)
+        }
     }
 }

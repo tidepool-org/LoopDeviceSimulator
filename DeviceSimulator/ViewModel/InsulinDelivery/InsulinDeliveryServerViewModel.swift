@@ -227,13 +227,21 @@ class InsulinDeliveryServerViewModel {
     var localBolusAmountString: String = ""
 
     var statusChangedSelection: [IDStatusChangedFlagEnhancement] = []
-    var statusFlags: [IDStatusFlag] = [] {
-        didSet {
-            var flags: IDStatusFlag = []
-            statusFlags.forEach { flags.insert($0) }
-            mockInsulinDeliveryPump?.statusCharacteristic.flags = flags
-            mockInsulinDeliveryPump?.statusCharacteristic.triggerIndication()
-        }
+    /// What the Status characteristic's Flags field carries; mirrors the pump, set from the Status Flags card.
+    var statusFlags: IDStatusFlag = []
+
+    func isStatusFlagEnabled(_ flag: IDStatusFlag) -> Bool {
+        statusFlags.contains(flag)
+    }
+
+    /// Changes the flag on the pump and indicates Status, as a pump does when its status changes.
+    func setStatusFlag(_ flag: IDStatusFlag, enabled: Bool) {
+        guard isStatusFlagEnabled(flag) != enabled else { return }
+        let name = IDStatusFlag.namedFlags.first { $0.flag == flag }?.name ?? String(describing: flag)
+        stimulus("Status Flag \(name) → \(enabled ? "on" : "off")")
+        if enabled { statusFlags.insert(flag) } else { statusFlags.remove(flag) }
+        mockInsulinDeliveryPump?.statusCharacteristic.flags = statusFlags
+        mockInsulinDeliveryPump?.statusCharacteristic.triggerIndication()
     }
 
     @ObservationIgnored private var serverName: String?
@@ -352,12 +360,7 @@ class InsulinDeliveryServerViewModel {
         mockPumpDidUpdate(pump)
         SessionLog.shared.log(.lifecycle, "pump server started, advertising \(self.serverName ?? InsulinDeliveryConstants.serverName), simulator \(Bundle.main.fullVersionString)")
 
-        if pump.statusCharacteristic.flags.contains(.reservoirAttached) {
-            statusFlags.append(.reservoirAttached)
-        }
-        if pump.statusCharacteristic.flags.contains(.reservoirRemainingAmountAccurate) {
-            statusFlags.append(.reservoirRemainingAmountAccurate)
-        }
+        statusFlags = pump.statusCharacteristic.flags
     }
 
     func stopServer() {
@@ -619,7 +622,7 @@ extension InsulinDeliveryServerViewModel: GATTServiceDelegate {
 extension InsulinDeliveryServerViewModel {
     func issueAnnunciation() {
         guard let annunciationTypeToIssue else { return }
-        stimulus("Issue Annunciation: \(annunciationTypeToIssue.description)")
+        stimulus("Issue Annunciation: \(annunciationTypeToIssue.displayName)")
         mockInsulinDeliveryPump?.issueGeneralAnnunciation(annunciationType: annunciationTypeToIssue)
     }
 }

@@ -65,6 +65,37 @@ class IDAnnunciationStatusCharacteristicEnhancement: IDAnnunciationStatusCharact
     }
 }
 
+// MARK: - Client: AuxInfo decoding
+
+/// The AuxInfo fields v2 makes mandatory for Bolus Canceled (AuxInfo1–4) and TBR Over / TBR Canceled (AuxInfo1–5).
+enum AnnunciationAuxInfo {
+    /// A readable breakdown of `auxiliaryData` for the three types with a fixed layout; nil for any other type
+    /// or a payload of the wrong size.
+    static func describe(type: AnnunciationType, auxiliaryData: Data) -> String? {
+        let data = Data(auxiliaryData)   // rebase indices at 0
+        switch type {
+        case .bolusCanceled:
+            guard data.count == 8 else { return nil }
+            let bolusID = data[0...].to(UInt16.self)
+            let bolusType = BolusType(rawValue: data[2]).map { String(describing: $0) } ?? "0x\(String(data[2], radix: 16))"
+            let programmed = Data(data[4...].to(SFLOAT.self)).sfloatToDouble()
+            let delivered = Data(data[6...].to(SFLOAT.self)).sfloatToDouble()
+            return "bolusID: \(bolusID), bolusType: \(bolusType), programmed: \(programmed) U, delivered: \(delivered) U"
+        case .tempBasalOver, .tempBasalCanceled:
+            guard data.count == 10 else { return nil }
+            let tbrType = TempBasalType(rawValue: data[0]).map { String(describing: $0) } ?? "0x\(String(data[0], radix: 16))"
+            let adjustment = Data(data[2...].to(SFLOAT.self)).sfloatToDouble()
+            let unit = TempBasalType(rawValue: data[0]) == .relative ? "" : " U/h"
+            let durationProgrammed = data[4...].to(UInt16.self)
+            let durationEffective = data[6...].to(UInt16.self)
+            let delivered = Data(data[8...].to(SFLOAT.self)).sfloatToDouble()
+            return "tbrType: \(tbrType), programmedAdjustment: \(adjustment)\(unit), durationProgrammed: \(durationProgrammed) min, durationEffective: \(durationEffective) min, delivered: \(delivered) U"
+        default:
+            return nil
+        }
+    }
+}
+
 extension AnnunciationType {
     static let automaticStop = AnnunciationType(rawValue: 0x036a)
 //    static let batteryAttention = AnnunciationType(rawValue: 0xf096)
