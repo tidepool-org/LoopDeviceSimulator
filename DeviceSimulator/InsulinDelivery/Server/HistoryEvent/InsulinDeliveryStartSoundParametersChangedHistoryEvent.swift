@@ -2,7 +2,7 @@
 //  InsulinDeliveryStartSoundParametersChangedHistoryEvent.swift
 //  LoopDeviceSimulator
 //
-//  Created by Nathaniel Hamming on 2025-08-08.
+//  Created by Nathaniel Hamming on 2025-09-18.
 //  Copyright © 2025 Tidepool Project. All rights reserved.
 //
 
@@ -10,14 +10,8 @@ import Foundation
 import InsulinDeliveryServiceKit
 
 struct InsulinDeliveryStartSoundParametersChangedHistoryEvent: PumpHistoryEvent {
-    static func createHistoryEvent(recordNumber: RecordNumber, relativeOffset: TimeInterval) -> InsulinDeliveryStartSoundParametersChangedHistoryEvent {
-        let status = IDStateFlag.enabled
-        let eventData = Data(status.rawValue)
-        return InsulinDeliveryStartSoundParametersChangedHistoryEvent(
-            recordNumber: recordNumber,
-            relativeOffset: relativeOffset,
-            eventData: eventData
-        )
+    static func createEventData(state: IDStateFlag) -> Data {
+        Data(state.rawValue)
     }
 
     let type: IDHistoryEventType = .insulinDeliveryStartSoundParametersChanged
@@ -27,7 +21,7 @@ struct InsulinDeliveryStartSoundParametersChangedHistoryEvent: PumpHistoryEvent 
     let relativeOffset: TimeInterval
 
     let eventData: Data
-    
+
     var state: IDStateFlag? {
         IDStateFlag(rawValue: eventData[eventData.startIndex...].to(IDStateFlag.RawValue.self))
     }
@@ -35,6 +29,6 @@ struct InsulinDeliveryStartSoundParametersChangedHistoryEvent: PumpHistoryEvent 
 
 extension InsulinDeliveryStartSoundParametersChangedHistoryEvent {
     var description: String {
-        "InsulinDeliveryStartSoundParametersChangedHistoryEvent state: \(String(describing: state))"
+        "InsulinDeliveryStartSoundParametersChangedHistoryEvent state: \(String(describing: state)), recordNumber: \(recordNumber), relativeOffset: \(relativeOffset)"
     }
 }

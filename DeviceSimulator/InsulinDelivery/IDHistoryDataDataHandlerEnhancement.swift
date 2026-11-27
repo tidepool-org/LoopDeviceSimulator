@@ -32,10 +32,17 @@ extension PumpHistoryEvent {
 
 class IDHistoryDataDataHandlerEnhancement: IDHistoryDataHandler {
     override class func createPumpHistoryEvent(type: IDHistoryEventType, recordNumber: RecordNumber, relativeOffet: TimeInterval, eventData: Data) -> (any PumpHistoryEvent)? {
-        guard type != .referenceTime else {
+        switch type {
+        case .referenceTime:
             return ReferenceTimeHistoryEventEnhancement(recordNumber: recordNumber, relativeOffset: relativeOffet, eventData: eventData)
+        case .deliveredBasalRateChanged:
+            return DeliveredBasalRateChangedHistoryEventEnhancement(recordNumber: recordNumber, relativeOffset: relativeOffet, eventData: eventData)
+        default:
+            if let eventType = IDHistoryEventType.v2EventTypes.first(where: { $0.type == type })?.event {
+                return eventType.init(recordNumber: recordNumber, relativeOffset: relativeOffet, eventData: eventData)
+            }
+            return PumpHistoryEventFactory.createPumpHistoryEvent(type: type, recordNumber: recordNumber, relativeOffet: relativeOffet, eventData: eventData)
         }
-        return PumpHistoryEventFactory.createPumpHistoryEvent(type: type, recordNumber: recordNumber, relativeOffet: relativeOffet, eventData: eventData)
     }
     
     class override func recordNumber(forResponse response: Data) -> RecordNumber {

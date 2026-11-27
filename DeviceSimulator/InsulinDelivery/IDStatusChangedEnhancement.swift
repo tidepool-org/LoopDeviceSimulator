@@ -120,7 +120,19 @@ public struct IDStatusChangedFlagEnhancement: OptionSet, Hashable, CustomStringC
         }
         return "\(result)"
     }
-    
+
+    /// For the client's Reset Status picker.
+    var name: String {
+        switch self {
+        case .allFlags: return "allFlags"
+        case .totalDailyInsulinStatusChanged: return "totalDailyInsulinStatusChanged"
+        case .activeBasalRateStatusChanged: return "activeBasalRateStatusChanged"
+        case .activeBolusStatusChanged: return "activeBolusStatusChanged"
+        case .historyEventRecordedChanged: return "historyEventRecordedChanged"
+        default: return description
+        }
+    }
+
     var originalFlags: IDStatusChangedFlag {
         var originalFlags: IDStatusChangedFlag = []
         if self.contains(.totalDailyInsulinStatusChanged) { originalFlags.insert(.totalDailyInsulinStatusChanged) }

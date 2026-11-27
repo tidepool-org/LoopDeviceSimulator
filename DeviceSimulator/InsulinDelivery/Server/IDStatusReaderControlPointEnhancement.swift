@@ -17,7 +17,13 @@ public protocol IDStatusReaderControlPointEnhancementDelegate: AnyObject {
 
 class IDStatusReaderControlPointEnhancement: IDStatusReaderControlPointCharacteristic {
     weak var enhancementDelegate: IDStatusReaderControlPointEnhancementDelegate?
-    
+
+    /// Whether a bolus was programmed on the pump itself, for the Local Bolus flag in Get Active Bolus Delivery.
+    var isLocalBolus: ((BolusID) -> Bool)?
+
+    /// Basal delivered since the current time block or TBR started, for the Basal Amount Delivered field.
+    var basalAmountDelivered: (() -> Double)?
+
     override func onWrite(_ request: Data?) -> CBATTError.Code {
         guard let request = request else {
             return CBATTError.Code.invalidPdu
@@ -26,15 +32,50 @@ class IDStatusReaderControlPointEnhancement: IDStatusReaderControlPointCharacter
         var index = 0
         let requestOpcode = IDStatusReaderOpcode(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStatusReaderOpcode.RawValue.self))
         index += 2
-        
+
         switch requestOpcode {
+        case .resetStatus:
+            // v2 flags: two octets with the four remaining bits at 0–3; the kit's characteristic keeps the v1 layout.
+            let flags = IDStatusChangedFlagEnhancement(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStatusChangedFlagEnhancement.RawValue.self))
+            ConsoleOut.shared.logMessage(message: "Opcode resetStatus (opcode: \(String(describing: requestOpcode))), v2 flags: \(flags)")
+            statusChangedCharacteristic?.resetFlags(flags.originalFlags)
+            sendResponse(createResponseWithSuccess(to: .resetStatus))
+            return CBATTError.Code.success
+        case .getActiveBolusDelivery:
+            let bolusID: BolusID = request[request.startIndex.advanced(by: index)...].to(BolusID.self)
+            index += 2
+            guard let selectionType = BolusValueSelection(rawValue: request[request.startIndex.advanced(by: index)...].to(BolusValueSelection.RawValue.self)) else {
+                sendResponse(createResponse(to: .getActiveBolusDelivery, with: .invalidOperand))
+                return CBATTError.Code.success
+            }
+            ConsoleOut.shared.logMessage(message: "Opcode getActiveBolusDelivery (opcode: \(String(describing: requestOpcode))), bolusID: \(bolusID), selectionType: \(selectionType)")
+            sendResponse(flaggingLocalBolus(createResponseToGetActiveBolus(bolusID, selectionType: selectionType), bolusID: bolusID))
+            return CBATTError.Code.success
         case .getSelectedStatusInformation:
             ConsoleOut.shared.logMessage(message: "Opcode getSelectedStatusInformation (opcode: \(String(describing: requestOpcode)))")
             let flags = IDSelectedStatusFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDSelectedStatusFlag.RawValue.self))
+            // All or nothing: a bit this pump does not answer refuses the whole request.
+            guard flags.isSubset(of: .allSupported) else {
+                ConsoleOut.shared.logMessage(message: "Selected status flags not supported: \(flags)")
+                sendResponse(createResponse(to: .getSelectedStatusInformation, with: .procedureNotApplicable))
+                return CBATTError.Code.success
+            }
             enhancementDelegate?.requestForSelectedStatus(flags)
             return CBATTError.Code.success
         default:
             return super.onWrite(request)
+        }
+    }
+
+    /// Sets the Bolus Delivery Source Local Bolus flag (bit 5) on a Get Active Bolus Delivery Response for a
+    /// bolus programmed on the pump. The flags octet follows the opcode.
+    func flaggingLocalBolus(_ response: Data, bolusID: BolusID) -> Data {
+        guard isLocalBolus?(bolusID) == true,
+              IDStatusReaderOpcode(rawValue: response[response.startIndex...].to(IDStatusReaderOpcode.RawValue.self)) == .getActiveBolusDeliveryResponse
+        else { return response }
+        return response.rewritingE2EBody(hasE2E: e2eDelegate?.isE2EProtectionSupported ?? false, hasCounter: true) { body in
+            let flagsIndex = body.startIndex.advanced(by: 2)
+            body[flagsIndex] |= BolusFlag.deliverySourceLocalBolus.rawValue
         }
     }
     
@@ -75,7 +116,7 @@ class IDStatusReaderControlPointEnhancement: IDStatusReaderControlPointCharacter
             response.append(basalDeliveryContext.rawValue)
         }
         
-        let amountDelivered: Double = 1.0
+        let amountDelivered = basalAmountDelivered?() ?? 0
         flags.insert(.amountDeliveredPresent)
         response.append(amountDelivered.sfloat)
         
@@ -89,7 +130,7 @@ class IDStatusReaderControlPointEnhancement: IDStatusReaderControlPointCharacter
 }
 
 public extension IDStatusReaderOpcode {
-    static let getSelectedStatusInformation = IDStatusReaderOpcode(rawValue: 0x0c03)
+    static let getSelectedStatusInformation = IDStatusReaderOpcode(rawValue: 0x0505)
 }
 
 public extension ActiveBasalRateFlag {
@@ -115,6 +156,7 @@ public struct IDSelectedStatusFlag: OptionSet, Hashable, CustomStringConvertible
     static public let getTotalDailyInsulinStatus = IDSelectedStatusFlag(rawValue: 1 << 9)
     static public let getDeliveredInsulin = IDSelectedStatusFlag(rawValue: 1 << 10)
     static public let allZeros = IDSelectedStatusFlag([])
+    static public let allSupported = IDSelectedStatusFlag([.statusChangedIndication, .statusIndication, .annunciationStatusIndication, .getActiveBasalRateDelivery, .getActiveBolusIDs, .getActiveBolusProgrammed, .getActiveBolusDelivered, .getActiveBolusRemaining, .getAvailableBoluses, .getTotalDailyInsulinStatus, .getDeliveredInsulin])
 
     static let debugDescription: [IDSelectedStatusFlag:String] = {
         var description = [IDSelectedStatusFlag:String]()

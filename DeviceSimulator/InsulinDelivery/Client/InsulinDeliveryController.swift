@@ -206,12 +206,13 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             print("Data from feature characteristic")
             let result = IDFeatureDataHandlerEnhancement.handleData(characteristicData)
             switch result {
-            case .success((_ , let features)):
+            case .success((let insulinConcentration, let features)):
                 self.features = features
+                // The kit's description of the flags stops at bit 15; name the v2 flags too.
+                message = "success(insulinConcentration: \(insulinConcentration), flags: \(features.v2Description))"
             default:
-                break
+                message = String(describing: result)
             }
-            message = String(describing: result)
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.status.cbUUID:
             print("Data from status characteristic")
@@ -241,12 +242,13 @@ public class InsulinDeliveryController: NSObject, CBCentralManagerDelegate, CBPe
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.commandControlPoint.cbUUID:
             print("Data from command control point")
-            let result = commandControlPoint.handleResponse(characteristicData)
+            // The pump sent v2 opcodes; the kit's handler knows the v1 values.
+            let result = commandControlPoint.handleResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: isE2EProtectionSupported))
             message = String(describing: result)
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.commandData.cbUUID:
             print("Data from command data")
-            let result = commandControlPoint.handleCommandDataResponse(characteristicData)
+            let result = commandControlPoint.handleCommandDataResponse(IDSv2Wire.commandResponseFromWire(characteristicData, hasE2E: isE2EProtectionSupported))
             message = String(describing: result)
             message.append(" Raw Data (Hex): \(characteristicData.hexadecimalString)")
         case InsulinDeliveryCharacteristicUUID.recordAccessControlPoint.cbUUID:
@@ -483,8 +485,9 @@ extension InsulinDeliveryController {
 
 // MARK: - Status Reader Control Point
 extension InsulinDeliveryController {
-    func resetStatus(_ flags: IDStatusChangedFlag, completion: @escaping MessageCompletion) {
-        let request = statusReaderControlPoint.createResetStatusChangedRequest(for: flags)
+    /// v2 Reset Status: the operand is the two-octet v2 Status Changed Flags field.
+    func resetStatus(_ flags: IDStatusChangedFlagEnhancement, completion: @escaping MessageCompletion) {
+        let request = statusReaderControlPoint.buildRequest(.resetStatus, operand: Data(flags.rawValue))
         sendStatusReaderControlPointRequest(request: request, completion: completion)
     }
     
@@ -660,7 +663,8 @@ extension InsulinDeliveryController {
     }
     
     func sendCommandControlPointRequest(request: Data, completion: @escaping MessageCompletion) {
-        var request = request
+        // The kit builds requests with v1 opcodes; the pump expects v2.
+        var request = IDSv2Wire.commandRequestToWire(request)
         if isE2EProtectionSupported {
             request = request.appendingCRC()
         }

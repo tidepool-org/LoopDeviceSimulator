@@ -11,22 +11,42 @@ import InsulinDeliveryServiceKit
 import BluetoothCommonKit
 import os.log
 
+/// v2 widens the Flags field to four octets (the kit writes three); which flags are set is the tester's choice
+/// on the Pump Feature card.
 public class IDFeatureCharacteristicEnhancement: IDFeatureCharacteristic {
     override public func createData() -> Data {
-        flags.insert([.supportedAutomaticStop, .supportedWarningLimitLifetime, .supportedWarningLimitReservoirLevel, .supportedAcousticSignalStartInsulinDelivery])
-        return super.createData()
+        if e2eDelegate?.isE2EProtectionSupported ?? false {
+            incrementE2ECounter()
+        }
+        var characteristicValue = Data(e2eCounter)
+        characteristicValue.append(insulinConcentration.sfloat)
+        var flags = flags
+        flags.insert([.supportedAutomaticStop, .supportedLocalBolus, .supportedWarningLimitLifetime, .supportedWarningLimitReservoirLevel])
+        characteristicValue.append(flags.rawValue)
+        if e2eDelegate?.isE2EProtectionSupported ?? false {
+            characteristicValue = characteristicValue.appendingCRCPrefix()
+        } else {
+            characteristicValue.insert(contentsOf: Data(UInt16(0xffff)), at: 0)
+        }
+
+        ConsoleOut.shared.logMessage(message: "\(#function) Insulin Delivery Feature characteristic value: \(characteristicValue.hexadecimalString)")
+
+        return characteristicValue
     }
 }
 
 public struct IDFeatureDataHandlerEnhancement {
     static private let log = OSLog(category: "IDFeature")
-    
+
+    /// E2E-CRC (2), E2E-Counter (1), Insulin Concentration (2), Flags (4).
+    static let expectedLength = 9
+
     public static func handleData(_ data: Data) -> DeviceCommResult<
         (insulinConcentration: Double,
         flags: IDFeatureFlag)>
     {
-        guard data.count == 8 else {
-            log.error("feature charactersitic is an unexpected size: (expect 8, actual, %d", data.count)
+        guard data.count == expectedLength else {
+            log.error("feature charactersitic is an unexpected size: (expect %d, actual, %d", expectedLength, data.count)
             return .failure(.invalidFormat)
         }
         
@@ -56,7 +76,7 @@ extension IDFeatureFlag {
     static let supportedWarningLimitLifetime = IDFeatureFlag(rawValue: 1 << 19)
     static let supportedWarningLimitReservoirLevel = IDFeatureFlag(rawValue: 1 << 20)
     static let supportedAcousticSignalStartInsulinDelivery = IDFeatureFlag(rawValue: 1 << 21)
-    static let supportedFeatureExtension = IDFeatureFlag(rawValue: 1 << 31)
+    static let supportedFeatureExtension = IDFeatureFlag(rawValue: 1 << 23)
     
     static var debugDescription: [IDFeatureFlag:String] = {
         var description = [IDFeatureFlag:String]()
@@ -85,4 +105,13 @@ extension IDFeatureFlag {
         description[.supportedFeatureExtension] = "supportedFeatureExtension"
         return description
     }()
+
+    /// Names every flag, the v2 ones included; the kit's `description` only knows its own sixteen.
+    var v2Description: String {
+        let names = IDFeatureFlag.debugDescription
+            .filter { contains($0.key) }
+            .sorted { $0.key.rawValue < $1.key.rawValue }
+            .map(\.value)
+        return "IDFeatureFlag(rawValue: \(rawValue), 0x\(String(rawValue, radix: 16))) \(names)"
+    }
 }

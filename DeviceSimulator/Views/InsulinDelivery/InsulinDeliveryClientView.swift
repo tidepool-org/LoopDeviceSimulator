@@ -258,33 +258,22 @@ struct InsulinDeliveryClientView: View {
         MockPumpStatusView(statusFlag: $viewModel.statusToReset)
     }
 
+    /// The v2 Status Changed flags: the four that remain after the characteristic-backed ones were dropped.
     struct MockPumpStatusView: View {
-        @Binding var statusFlag: IDStatusChangedFlag
-        
+        @Binding var statusFlag: IDStatusChangedFlagEnhancement
+
         var body: some View {
             HStack {
                 Picker("Reset status:", selection: $statusFlag) {
                     ForEach(statusFlags, id: \.self) { statusFlag in
-                        Text(pickerValue(for: statusFlag)).tag(statusFlag)
+                        Text(statusFlag.name).tag(statusFlag)
                     }
                 }
             }
         }
-        
-        private func pickerValue(for statusFlag: IDStatusChangedFlag) -> String {
-            return "\(statusFlag.name)"
-        }
-        
-        private var statusFlags: [IDStatusChangedFlag] {
-            [.allFlags,
-             .therapyControlStateChanged,
-             .operationalStateChanged,
-             .reservoirStatusChanged,
-             .annunciationStatusChanged,
-             .totalDailyInsulinStatusChanged,
-             .activeBasalRateStatusChanged,
-             .activeBolusStatusChanged,
-             .historyEventRecordedChanged]
+
+        private var statusFlags: [IDStatusChangedFlagEnhancement] {
+            [.allFlags] + IDStatusChangedFlagEnhancement.allCases
         }
     }
     
@@ -865,23 +854,6 @@ struct InsulinDeliveryClientView: View {
             onRefresh: viewModel.refreshList,
             onSelect: viewModel.connectToDevice
         )
-    }
-}
-
-extension IDStatusChangedFlag {
-    fileprivate var name: String {
-        switch self {
-        case .allFlags: return "allFlags"
-        case .therapyControlStateChanged: return "therapyControlStateChanged"
-        case .operationalStateChanged: return "operationalStateChanged"
-        case .reservoirStatusChanged: return "reservoirStatusChanged"
-        case .annunciationStatusChanged: return "annunciationStatusChanged"
-        case .totalDailyInsulinStatusChanged: return "totalDailyInsulinStatusChanged"
-        case .activeBasalRateStatusChanged: return "activeBasalRateStatusChanged"
-        case .activeBolusStatusChanged: return "activeBolusStatusChanged"
-        case .historyEventRecordedChanged: return "historyEventRecordedChanged"
-        default: return ""
-        }
     }
 }
 

@@ -2,7 +2,7 @@
 //  AutomaticStopParametersChangedHistoryEvent.swift
 //  LoopDeviceSimulator
 //
-//  Created by Nathaniel Hamming on 2025-08-08.
+//  Created by Nathaniel Hamming on 2025-09-18.
 //  Copyright © 2025 Tidepool Project. All rights reserved.
 //
 
@@ -10,16 +10,10 @@ import Foundation
 import InsulinDeliveryServiceKit
 
 struct AutomaticStopParametersChangedHistoryEvent: PumpHistoryEvent {
-    static func createHistoryEvent(recordNumber: RecordNumber, relativeOffset: TimeInterval) -> AutomaticStopParametersChangedHistoryEvent {
-        let status = IDStateFlag.enabled
-        let maxTimeout: UInt16 = 1000
-        var eventData = Data(status.rawValue)
+    static func createEventData(state: IDStateFlag, maxTimeout: UInt16) -> Data {
+        var eventData = Data(state.rawValue)
         eventData.append(maxTimeout)
-        return AutomaticStopParametersChangedHistoryEvent(
-            recordNumber: recordNumber,
-            relativeOffset: relativeOffset,
-            eventData: eventData
-        )
+        return eventData
     }
 
     let type: IDHistoryEventType = .automaticStopParametersChanged
@@ -33,7 +27,7 @@ struct AutomaticStopParametersChangedHistoryEvent: PumpHistoryEvent {
     var state: IDStateFlag? {
         IDStateFlag(rawValue: eventData[eventData.startIndex...].to(IDStateFlag.RawValue.self))
     }
-    
+
     var maxTimeout: TimeInterval {
         TimeInterval(minutes: Double(eventData[eventData.startIndex.advanced(by: 1)...].to(UInt16.self)))
     }
@@ -41,6 +35,6 @@ struct AutomaticStopParametersChangedHistoryEvent: PumpHistoryEvent {
 
 extension AutomaticStopParametersChangedHistoryEvent {
     var description: String {
-        "AutomaticStopParametersChangedHistoryEvent state: \(String(describing: state)), maxTimeout: \(maxTimeout)"
+        "AutomaticStopParametersChangedHistoryEvent state: \(String(describing: state)), maxTimeout: \(maxTimeout.minutes) min, recordNumber: \(recordNumber), relativeOffset: \(relativeOffset)"
     }
 }

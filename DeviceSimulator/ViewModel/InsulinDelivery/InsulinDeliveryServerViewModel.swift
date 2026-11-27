@@ -323,11 +323,15 @@ class InsulinDeliveryServerViewModel {
         self.server?.delegate = self
 
         // Every notification and indication the pump sends passes through here, so the tester can fault it.
-        let messageQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
-        faultQueue = messageQueue
+        let faultQueue = FaultInjectingMessageQueue(wrapping: MessageQueue(gattService: server))
+        self.faultQueue = faultQueue
+        // Command Control Point responses leave with v2 opcodes; the translation sits before the fault stage, so
+        // faults land on the bytes the controller receives.
+        let messageQueue = IDSv2WireMessageQueue(wrapping: faultQueue)
         // A pump that was powered off comes back as it was: reservoir, profile, therapy and operational state.
         let restoredStatus = pumpStateStore.load().flatMap(MockInsulinDeliveryPumpStatus.init(rawValue:))
         let pump = MockInsulinDeliveryPumpEnhancement(gattServer: server, messageQueue: messageQueue, status: restoredStatus)
+        faultQueue.hasE2ECRC = { [weak pump] in pump?.isE2EProtectionSupported ?? false }
         messageQueue.hasE2ECRC = { [weak pump] in pump?.isE2EProtectionSupported ?? false }
         // The ACS gate and any stored pairing are back before the first collector packet.
         pump.isAuthorizationControlEnabled = isAuthorizationControlEnabled
@@ -459,9 +463,50 @@ class InsulinDeliveryServerViewModel {
         consoleMessages.removeAll()
     }
     
+    /// A fast bolus programmed on the pump's own UI; Get Active Bolus Delivery then carries the Local Bolus flag.
     func startLocalBolus() {
-        guard let localBolusAmount = Double(localBolusAmountString) else { return }
-        _ = mockInsulinDeliveryPump?.setBolus(localBolusAmount, activationType: .manualBolus)
+        guard let pump = mockInsulinDeliveryPump,
+              let amount = Double(localBolusAmountString.trimmingCharacters(in: .whitespaces)), amount > 0
+        else { return }
+        stimulus("Local Bolus \(amount) U (on the pump)")
+        let bolusID = pump.startLocalBolus(amount)
+        SessionLog.shared.log(.lifecycle, "pump started local bolus \(bolusID) of \(amount) U")
+        mockPumpDidUpdate(pump)
+    }
+
+    // MARK: - v2 history events
+
+    var historyEventTypeToRecord: IDHistoryEventType? = nil
+
+    /// Records one of the events v2 adds, with stand-in values; the Set procedures record the real ones.
+    func recordV2HistoryEvent() {
+        guard let pump = mockInsulinDeliveryPump,
+              let type = historyEventTypeToRecord,
+              let entry = IDHistoryEventType.v2EventTypes.first(where: { $0.type == type })
+        else { return }
+        stimulus("Record History Event: \(entry.name)")
+        pump.recordV2HistoryEvent(type: type, eventData: Self.sampleEventData(for: type))
+    }
+
+    static func sampleEventData(for type: IDHistoryEventType) -> Data {
+        switch type {
+        case .localBolusParametersChanged:
+            return LocalBolusParametersChangedHistoryEvent.createEventData(state: .enabled, stepValue: 0.5, maxAmount: 10)
+        case .automaticStopParametersChanged:
+            return AutomaticStopParametersChangedHistoryEvent.createEventData(state: .enabled, maxTimeout: 720)
+        case .acousticSignalSuspensionParametersChanged:
+            return AcousticSignalSuspensionParametersChangedHistoryEvent.createEventData(state: .enabled, startTime: .minutes(22 * 60), duration: .minutes(8 * 60), repeatStatus: .repeating)
+        case .lifetimeWarningLimitChanged:
+            return LifetimeWarningLimitChangedHistoryEvent.createEventData(state: .enabled, warningLimitInDays: 10)
+        case .reservoirLevelWarningLimitChanged:
+            return ReservoirLevelWarningLimitChangedHistoryEvent.createEventData(state: .enabled, warningLimit: 70)
+        case .insulinDeliveryStartSoundParametersChanged:
+            return InsulinDeliveryStartSoundParametersChangedHistoryEvent.createEventData(state: .enabled)
+        case .clientInformationChanged:
+            return ClientIdentificationChangedHistoryEvent.createEventData(identification: Data(hexadecimalString: "00010203040506070809") ?? Data())
+        default:
+            return Data()
+        }
     }
 }
 

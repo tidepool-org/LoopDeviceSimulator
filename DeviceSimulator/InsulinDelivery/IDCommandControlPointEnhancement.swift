@@ -22,14 +22,23 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
     var automaticStopState: IDStateFlag = .disabled
     var automaticStopTimeout: UInt16 = 0
     var counterStartDate = Date()
+    /// Minutes without user interaction; stays at the data type's maximum until Reset Automatic Stop Timeout.
     var automaticStopCounter: UInt16 {
         get {
-            UInt16(abs(counterStartDate.timeIntervalSinceNow)/60)
+            UInt16(min(abs(counterStartDate.timeIntervalSinceNow) / 60, Double(UInt16.max)))
         }
         set {
-            counterStartDate = Date().addingTimeInterval(-TimeInterval(newValue * 60))
+            counterStartDate = Date().addingTimeInterval(-TimeInterval(newValue) * 60)
         }
     }
+    /// The counter has reached the timeout while the feature is on; the pump decides what to do with it.
+    var isAutomaticStopDue: Bool {
+        automaticStopState == .enabled && automaticStopCounter >= automaticStopTimeout
+    }
+    /// Set by the pump once it has stopped therapy for the current timeout, so one timeout stops once.
+    var hasAutomaticStopFired = false
+    /// Called after the parameters or the counter change, so the pump re-evaluates without waiting for its poll.
+    var automaticStopParametersDidChange: (() -> Void)?
     
     var acousticSignalSuspensionState: IDStateFlag = .disabled
     var acousticSignalSuspensionStartTime: TimeInterval = 0
@@ -43,19 +52,34 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
     var reservoirWarningLimit: Double = 0.0
     
     var insulinDeliveryStartSoundState: IDStateFlag = .disabled
-    
+
+    /// Records the history event a Set procedure calls for; the pump, which owns the RACP, provides it.
+    var recordHistoryEvent: ((IDHistoryEventType, Data) -> Void)?
+
+    /// Above this, Set Max Basal Rate Amount answers Parameter out of Range.
+    static let maxBasalRateRange: ClosedRange<Double> = 0...50
+
     override func onWrite(_ request: Data?) -> CBATTError.Code {
-        guard let request = request else {
+        guard let wireRequest = request else {
             return CBATTError.Code.invalidPdu
         }
-        
+        // The controller writes v2 opcodes; this class and the kit work with the internal values.
+        let request = IDSv2Wire.commandRequestFromWire(wireRequest, hasE2E: isE2EProtectionSupported)
+        if request != wireRequest {
+            ConsoleOut.shared.logMessage(message: "IDS v2 opcode from the wire: \(wireRequest.hexadecimalString) (internal \(request.hexadecimalString))")
+        }
+
         var index = 0
         let requestOpcode = IDCommandControlPointOpcode(rawValue: request[request.startIndex.advanced(by: index)...].to(IDCommandControlPointOpcode.RawValue.self))
         index += 2
-        
+
         switch requestOpcode {
         case .setMaxBasalRateAmount:
             let newMax = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
+            guard Self.maxBasalRateRange.contains(newMax) else {
+                response(to: .setMaxBasalRateAmount, with: .parameterOutOfRange)
+                return CBATTError.Code.success
+            }
             maxBasalRate = newMax
             respondWithSuccess(to: .setMaxBasalRateAmount)
             return CBATTError.Code.success
@@ -69,8 +93,9 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             print("status: \(String(describing: status))")
             index += 1
             guard status == .enabled else {
-                respondWithSuccess(to: .setLocalBolusParameters)
                 localBolusState = .disabled
+                recordHistoryEvent?(.localBolusParametersChanged, LocalBolusParametersChangedHistoryEvent.createEventData(state: localBolusState, stepValue: localBolusStepValue, maxAmount: maxLocalBolusAmount))
+                respondWithSuccess(to: .setLocalBolusParameters)
                 return CBATTError.Code.success
             }
             localBolusState = .enabled
@@ -81,6 +106,7 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             let maxBolusAmount = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
             maxLocalBolusAmount = maxBolusAmount
             print("maxBolusAmount: \(maxLocalBolusAmount)")
+            recordHistoryEvent?(.localBolusParametersChanged, LocalBolusParametersChangedHistoryEvent.createEventData(state: localBolusState, stepValue: localBolusStepValue, maxAmount: maxLocalBolusAmount))
             respondWithSuccess(to: .setLocalBolusParameters)
             return CBATTError.Code.success
         case .getLocalBolusParameters:
@@ -99,15 +125,25 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             print("status: \(String(describing: status))")
             index += 1
             guard status == .enabled else {
-                respondWithSuccess(to: .setAutomaticStopParameters)
                 automaticStopState = .disabled
+                hasAutomaticStopFired = false
+                recordHistoryEvent?(.automaticStopParametersChanged, AutomaticStopParametersChangedHistoryEvent.createEventData(state: automaticStopState, maxTimeout: automaticStopTimeout))
+                respondWithSuccess(to: .setAutomaticStopParameters)
+                automaticStopParametersDidChange?()
                 return CBATTError.Code.success
             }
+            // The counter only restarts when the feature was off; re-enabling keeps counting.
+            if automaticStopState == .disabled {
+                automaticStopCounter = 0
+            }
             automaticStopState = .enabled
+            hasAutomaticStopFired = false
             let timeout = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
             automaticStopTimeout = timeout
             print("automaticStopTimeout: \(automaticStopTimeout)")
+            recordHistoryEvent?(.automaticStopParametersChanged, AutomaticStopParametersChangedHistoryEvent.createEventData(state: automaticStopState, maxTimeout: automaticStopTimeout))
             respondWithSuccess(to: .setAutomaticStopParameters)
+            automaticStopParametersDidChange?()   // a timeout at or below the counter stops therapy now
             return CBATTError.Code.success
         case .getAutomaticStopParameters:
             var response = Data(IDCommandControlPointOpcode.getAutomaticStopParametersResponse.rawValue)
@@ -133,29 +169,36 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             }
             
             automaticStopCounter = lastIntereactionInterval
+            hasAutomaticStopFired = false
             respondWithSuccess(to: .resetAutomaticStopTimeout)
+            automaticStopParametersDidChange?()
             return CBATTError.Code.success
         case .setAcousticSignalSuspensionParameters:
             let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
             print("status: \(String(describing: status))")
             index += 1
             guard status == .enabled else {
-                respondWithSuccess(to: .setAcousticSignalSuspensionParameters)
                 acousticSignalSuspensionState = .disabled
+                recordHistoryEvent?(.acousticSignalSuspensionParametersChanged, acousticSignalSuspensionEventData)
+                respondWithSuccess(to: .setAcousticSignalSuspensionParameters)
+                return CBATTError.Code.success
+            }
+            let startTime = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            index += 2
+            let duration = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
+            index += 2
+            guard let repeatStatus = IDRepeatFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDRepeatFlag.RawValue.self)) else {
+                response(to: .setAcousticSignalSuspensionParameters, with: .invalidOperand)
                 return CBATTError.Code.success
             }
             acousticSignalSuspensionState = .enabled
-            let startTime = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
-            index += 2
-            acousticSignalSuspensionStartTime = TimeInterval(startTime*60)
+            acousticSignalSuspensionStartTime = .minutes(Int(startTime))
             print("acousticSignalSuspensionStartTime: \(acousticSignalSuspensionStartTime)")
-            let duration = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
-            index += 2
-            acousticSignalSuspensionDuration = TimeInterval(duration*60)
+            acousticSignalSuspensionDuration = .minutes(Int(duration))
             print("acousticSignalSuspensionDuration: \(acousticSignalSuspensionDuration)")
-            let repeatStatus = IDRepeatFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDRepeatFlag.RawValue.self))
-            acousticSignalSuspensionRepeatStatus = repeatStatus!
+            acousticSignalSuspensionRepeatStatus = repeatStatus
             print("acousticSignalSuspensionRepeatStatus: \(acousticSignalSuspensionRepeatStatus)")
+            recordHistoryEvent?(.acousticSignalSuspensionParametersChanged, acousticSignalSuspensionEventData)
             respondWithSuccess(to: .setAcousticSignalSuspensionParameters)
             return CBATTError.Code.success
         case .getAcousticSignalSuspensionParameters:
@@ -175,14 +218,16 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             print("status: \(String(describing: status))")
             index += 1
             guard status == .enabled else {
-                respondWithSuccess(to: .setLifetimeWarningLimit)
                 lifetimeWarningState = .disabled
+                recordHistoryEvent?(.lifetimeWarningLimitChanged, LifetimeWarningLimitChangedHistoryEvent.createEventData(state: lifetimeWarningState, warningLimitInDays: lifeTimeWarningLimitInDays))
+                respondWithSuccess(to: .setLifetimeWarningLimit)
                 return CBATTError.Code.success
             }
             lifetimeWarningState = .enabled
             let limit = request[request.startIndex.advanced(by: index)...].to(UInt16.self)
             lifeTimeWarningLimitInDays = limit
             print("lifeTimeWarningLimitInDays: \(lifeTimeWarningLimitInDays)")
+            recordHistoryEvent?(.lifetimeWarningLimitChanged, LifetimeWarningLimitChangedHistoryEvent.createEventData(state: lifetimeWarningState, warningLimitInDays: lifeTimeWarningLimitInDays))
             respondWithSuccess(to: .setLifetimeWarningLimit)
             return CBATTError.Code.success
         case .getLifetimeWarningLimit:
@@ -201,6 +246,7 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             index += 1
             guard status == .enabled else {
                 reservoirWarningState = .disabled
+                recordHistoryEvent?(.reservoirLevelWarningLimitChanged, ReservoirLevelWarningLimitChangedHistoryEvent.createEventData(state: reservoirWarningState, warningLimit: reservoirWarningLimit))
                 respondWithSuccess(to: .setReservoirLevelWarningLimit)
                 return CBATTError.Code.success
             }
@@ -208,6 +254,7 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             let limit = Data(request[request.startIndex.advanced(by: index)...].to(SFLOAT.self)).sfloatToDouble()
             reservoirWarningLimit = limit
             print("reservoirWarningLimit: \(reservoirWarningLimit)")
+            recordHistoryEvent?(.reservoirLevelWarningLimitChanged, ReservoirLevelWarningLimitChangedHistoryEvent.createEventData(state: reservoirWarningState, warningLimit: reservoirWarningLimit))
             respondWithSuccess(to: .setReservoirLevelWarningLimit)
             return CBATTError.Code.success
         case .getReservoirLevelWarningLimit:
@@ -224,6 +271,7 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
             let status = IDStateFlag(rawValue: request[request.startIndex.advanced(by: index)...].to(IDStateFlag.RawValue.self))
             print("status: \(String(describing: status))")
             insulinDeliveryStartSoundState = status ?? .disabled
+            recordHistoryEvent?(.insulinDeliveryStartSoundParametersChanged, InsulinDeliveryStartSoundParametersChangedHistoryEvent.createEventData(state: insulinDeliveryStartSoundState))
             respondWithSuccess(to: .setInsulinDeliveryStartSoundParameters)
             return CBATTError.Code.success
         case .getInsulinDeliveryStartSoundParameters:
@@ -234,6 +282,13 @@ class IDCommandControlPointEnhancement: IDCommandControlPointCharacteristic {
         default:
             return super.onWrite(request)
         }
+    }
+
+    private var acousticSignalSuspensionEventData: Data {
+        AcousticSignalSuspensionParametersChangedHistoryEvent.createEventData(state: acousticSignalSuspensionState,
+                                                                             startTime: acousticSignalSuspensionStartTime,
+                                                                             duration: acousticSignalSuspensionDuration,
+                                                                             repeatStatus: acousticSignalSuspensionRepeatStatus)
     }
 }
 
@@ -309,12 +364,15 @@ class IDCommandControlPointDataHandlerEnhancement: IDCommandControlPointDataHand
 }
 
 extension IDCommandControlPointOpcode {
-    static public let getMaxBasalRateAmount = IDCommandControlPointOpcode(rawValue: 0x14be)
-    static public let getMaxBasalRateAmountResponse = IDCommandControlPointOpcode(rawValue: 0x14d7)
-    static public let setMaxBasalRateAmount = IDCommandControlPointOpcode(rawValue: 0x14b1)
-    static public let getLocalBolusParameters = IDCommandControlPointOpcode(rawValue: 0x14e4)
-    static public let getLocalBolusParametersResponse = IDCommandControlPointOpcode(rawValue: 0x14eb)
-    static public let setLocalBolusParameters = IDCommandControlPointOpcode(rawValue: 0x14d8)
+    // Internal placeholders, never on the wire. The CR gives these six the v1 values of other procedures (the
+    // kit's constants, e.g. 0x0FFF is still Set TBR Adjustment there), so inside the app they carry 0xA + the
+    // wire value and IDSv2Wire swaps them at the edges. The rest are the same on the wire.
+    static public let setMaxBasalRateAmount = IDCommandControlPointOpcode(rawValue: 0xa0ff)            // wire 0x0FFF
+    static public let getMaxBasalRateAmount = IDCommandControlPointOpcode(rawValue: 0xa111)            // wire 0x1111
+    static public let getMaxBasalRateAmountResponse = IDCommandControlPointOpcode(rawValue: 0xa11e)    // wire 0x111E
+    static public let setLocalBolusParameters = IDCommandControlPointOpcode(rawValue: 0xa248)          // wire 0x1248
+    static public let getLocalBolusParameters = IDCommandControlPointOpcode(rawValue: 0xa274)          // wire 0x1274
+    static public let getLocalBolusParametersResponse = IDCommandControlPointOpcode(rawValue: 0xa27b)  // wire 0x127B
     static public let getAutomaticStopParameters = IDCommandControlPointOpcode(rawValue: 0x1718)
     static public let getAutomaticStopParametersResponse = IDCommandControlPointOpcode(rawValue: 0x1724)
     static public let setAutomaticStopParameters = IDCommandControlPointOpcode(rawValue: 0x1717)
@@ -330,7 +388,7 @@ extension IDCommandControlPointOpcode {
     static public let setReservoirLevelWarningLimit = IDCommandControlPointOpcode(rawValue: 0x17b2)
     static public let getInsulinDeliveryStartSoundParameters = IDCommandControlPointOpcode(rawValue: 0x17e7)
     static public let getInsulinDeliveryStartSoundParametersResponse = IDCommandControlPointOpcode(rawValue: 0x17e8)
-    static public let setInsulinDeliveryStartSoundParameters = IDCommandControlPointOpcode(rawValue: 0x17d8)
+    static public let setInsulinDeliveryStartSoundParameters = IDCommandControlPointOpcode(rawValue: 0x17db)
     
     var requestOpcode: IDCommandControlPointOpcode? {
         switch self {

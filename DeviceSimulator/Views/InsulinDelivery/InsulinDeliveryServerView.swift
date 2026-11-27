@@ -140,7 +140,25 @@ struct InsulinDeliveryServerView: View {
             statusFlags
             triggerStatusChanged
             triggerAnnunciations
+            recordHistoryEvent
             sendSecureMessage
+        }
+    }
+
+    /// The history events v2 adds, recorded on demand with stand-in values; the Set procedures record real ones.
+    private var recordHistoryEvent: some View {
+        RoundedCard(title: "History Events (v2)") {
+            Divider()
+            Picker("Record event:", selection: $viewModel.historyEventTypeToRecord) {
+                Text("none").tag(IDHistoryEventType?.none)
+                ForEach(IDHistoryEventType.v2EventTypes, id: \.type) { entry in
+                    Text(entry.name).tag(IDHistoryEventType?.some(entry.type))
+                }
+            }
+            Button(action: viewModel.recordV2HistoryEvent) {
+                Text("Record History Event")
+            }
+            .disabled(viewModel.historyEventTypeToRecord == nil)
         }
     }
     
@@ -223,11 +241,11 @@ struct InsulinDeliveryServerView: View {
                 return "none"
             }
 
-            return "\(annunciation.description)"
+            return annunciation.displayName
         }
-        
+
         private var annunciations: [AnnunciationType?] {
-            [nil] + (AnnunciationType.allAnnunciations.sorted {$0.description < $1.description})
+            [nil] + (AnnunciationType.allAnnunciations.sorted { $0.displayName < $1.displayName })
         }
     }
     

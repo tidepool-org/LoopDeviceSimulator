@@ -150,6 +150,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     @Published var selectedStatusMessage: String? = nil
    
     func getSelectedStatusInformation() {
+        SessionLog.shared.stimulus("Get Selected Status Information")
         selectedStatusMessage = nil
         var selectedStatuses: IDSelectedStatusFlag = .allZeros
         if selectedStatus { selectedStatuses.insert(.statusIndication) }
@@ -175,7 +176,7 @@ class InsulinDeliveryClientViewModel: ObservableObject {
     
     // MARK: - Status Reader
     @Published var resetStatusMessage: String? = nil
-    @Published var statusToReset: IDStatusChangedFlag = .allFlags
+    @Published var statusToReset: IDStatusChangedFlagEnhancement = .allFlags
     @Published var getActiveBolusIDsMessage: String? = nil
     @Published var getActiveBolusDeliveryMessage: String? = nil
     @Published var getActiveBasalDeliveryMessage: String? = nil
@@ -748,6 +749,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getMaxBasalRateAmount() {
+        SessionLog.shared.stimulus("Get Max Basal Rate Amount")
         maxBasalRateMessage = nil
         sendCommand(.getMaxBasalRateAmount) { message in
             self.maxBasalRateMessage = (self.maxBasalRateMessage ?? "") + "\n\n" + message
@@ -755,6 +757,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setMaxBasalRateAmount() {
+        SessionLog.shared.stimulus("Set Max Basal Rate Amount: \(maxBasalRateAmount)")
         maxBasalRateMessage = nil
         let operand = Data(maxBasalRateAmount.sfloat)
         sendCommand(.setMaxBasalRateAmount, operand: operand) { message in
@@ -763,6 +766,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getLocalBolusParameters() {
+        SessionLog.shared.stimulus("Get Local Bolus Parameters")
         localBolusMessage = nil
         sendCommand(.getLocalBolusParameters) { message in
             self.localBolusMessage = (self.localBolusMessage ?? "") + "\n\n" + message
@@ -770,6 +774,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setLocalBolusParameters() {
+        SessionLog.shared.stimulus("Set Local Bolus Parameters: \(localBolusStatus ? "enabled" : "disabled"), step \(localBolsuStepValue), max \(localBolusMaxAmount)")
         localBolusMessage = nil
         var operand = localBolusStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         if localBolusStatus {
@@ -782,6 +787,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getAutoStopParameters() {
+        SessionLog.shared.stimulus("Get Automatic Stop Parameters")
         autoStopMessage = nil
         sendCommand(.getAutomaticStopParameters) { message in
             self.autoStopMessage = (self.autoStopMessage ?? "") + "\n\n" + message
@@ -789,6 +795,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setAutoStopParameters() {
+        SessionLog.shared.stimulus("Set Automatic Stop Parameters: \(autoStopStatus ? "enabled" : "disabled"), timeout \(maxAutoStopTimeout) min")
         autoStopMessage = nil
         var operand = autoStopStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         if autoStopStatus {
@@ -800,6 +807,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func resetAutoStopTimeout() {
+        SessionLog.shared.stimulus("Reset Automatic Stop Timeout: last interaction \(lastUserInteraction) min")
         resetAutoStopMessage = nil
         let operand = Data(lastUserInteraction)
         sendCommand(.resetAutomaticStopTimeout, operand: operand) { message in
@@ -808,6 +816,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getSuspendSignalParameters() {
+        SessionLog.shared.stimulus("Get Acoustic Signal Suspension Parameters")
         suspendSignalMessage = nil
         sendCommand(.getAcousticSignalSuspensionParameters) { message in
             self.suspendSignalMessage = (self.suspendSignalMessage ?? "") + "\n\n" + message
@@ -815,6 +824,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setSuspendSignalParameters() {
+        SessionLog.shared.stimulus("Set Acoustic Signal Suspension Parameters: \(suspendSignalStatus ? "enabled" : "disabled"), start \(suspendSignalStartTime) min, duration \(suspendSignalDuration) min, \(suspendSignalRepeats ? "repeat" : "once")")
         suspendSignalMessage = nil
         var operand = suspendSignalStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         if suspendSignalStatus {
@@ -828,6 +838,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getLifetimeWarningLimit() {
+        SessionLog.shared.stimulus("Get Lifetime Warning Limit")
         lifetimeWarningLimitMessage = nil
         sendCommand(.getLifetimeWarningLimit) { message in
             self.lifetimeWarningLimitMessage = (self.lifetimeWarningLimitMessage ?? "") + "\n\n" + message
@@ -835,6 +846,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setLifetimeWarningLimit() {
+        SessionLog.shared.stimulus("Set Lifetime Warning Limit: \(lifetimeWarningLimitStatus ? "enabled" : "disabled"), \(lifetimeWarningLimit) days")
         lifetimeWarningLimitMessage = nil
         var operand = lifetimeWarningLimitStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         if lifetimeWarningLimitStatus {
@@ -846,6 +858,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getReservoirLevelWarningLimit() {
+        SessionLog.shared.stimulus("Get Reservoir Level Warning Limit")
         reservoirLevelWarningLimitMessage = nil
         sendCommand(.getReservoirLevelWarningLimit) { message in
             self.reservoirLevelWarningLimitMessage = (self.reservoirLevelWarningLimitMessage ?? "") + "\n\n" + message
@@ -853,6 +866,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setReservoirLevelWarningLimit() {
+        SessionLog.shared.stimulus("Set Reservoir Level Warning Limit: \(reservoirLevelWarningLimitStatus ? "enabled" : "disabled"), \(reservoirLevelWarningLimit) U")
         reservoirLevelWarningLimitMessage = nil
         var operand = reservoirLevelWarningLimitStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         if reservoirLevelWarningLimitStatus {
@@ -864,6 +878,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func getInsulinDeliveryStartSoundParameters() {
+        SessionLog.shared.stimulus("Get Insulin Delivery Start Sound Parameters")
         insulinDeliveryStartSoundParametersMessage = nil
         sendCommand(.getInsulinDeliveryStartSoundParameters) { message in
             self.insulinDeliveryStartSoundParametersMessage = (self.insulinDeliveryStartSoundParametersMessage ?? "") + "\n\n" + message
@@ -871,6 +886,7 @@ extension InsulinDeliveryClientViewModel {
     }
     
     func setInsulinDeliveryStartSoundParameters() {
+        SessionLog.shared.stimulus("Set Insulin Delivery Start Sound Parameters: \(insulinDeliveryStartSoundStatus ? "enabled" : "disabled")")
         insulinDeliveryStartSoundParametersMessage = nil
         let operand = insulinDeliveryStartSoundStatus ? Data(IDStateFlag.enabled.rawValue) : Data(IDStateFlag.disabled.rawValue)
         sendCommand(.setInsulinDeliveryStartSoundParameters, operand: operand) { message in

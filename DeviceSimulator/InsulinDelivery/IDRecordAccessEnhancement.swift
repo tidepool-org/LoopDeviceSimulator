@@ -74,7 +74,7 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
                     numberOfRecords = historyEventsToReport.count
                     for historyEvent in historyEventsToReport {
                         guard !shouldAbort else { break }
-                        _ = indicateHistoryEvent(historyEvent)
+                        _ = indicateHistoryEvent(v2Event(historyEvent))
                     }
                 } else if operatorValue == .greaterThanOrEqualTo {
                     let historyEventsToReport: [PumpHistoryEvent]
@@ -97,7 +97,7 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
                     numberOfRecords = historyEventsToReport.count
                     for historyEvent in historyEventsToReport {
                         guard !shouldAbort else { break }
-                        _ = indicateHistoryEvent(historyEvent)
+                        _ = indicateHistoryEvent(v2Event(historyEvent))
                     }
                 } else {
                     // inclusive range
@@ -126,7 +126,7 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
                     numberOfRecords = historyEventsToReport.count
                     for historyEvent in historyEventsToReport {
                         guard !shouldAbort else { break }
-                        _ = indicateHistoryEvent(historyEvent)
+                        _ = indicateHistoryEvent(v2Event(historyEvent))
                     }
                 }
             } else {
@@ -134,20 +134,20 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
                     numberOfRecords = storedHistoryEvents.count
                     for historyEvent in storedHistoryEvents {
                         guard !shouldAbort else { break }
-                        _ = indicateHistoryEvent(historyEvent)
+                        _ = indicateHistoryEvent(v2Event(historyEvent))
                     }
                 } else if operatorValue == .firstRecord {
                     guard let historyEvent = storedHistoryEvents.first else {
                         return createResponseNoRecordsFound(requestOpcode: opcode)
                     }
                     numberOfRecords = 1
-                    _ = indicateHistoryEvent(historyEvent)
+                    _ = indicateHistoryEvent(v2Event(historyEvent))
                 } else {
                     guard let historyEvent = storedHistoryEvents.last else {
                         return createResponseNoRecordsFound(requestOpcode: opcode)
                     }
                     numberOfRecords = 1
-                    _ = indicateHistoryEvent(historyEvent)
+                    _ = indicateHistoryEvent(v2Event(historyEvent))
                 }
             }
             return createCombinedReportResponse(UInt32(numberOfRecords))
@@ -157,15 +157,55 @@ class IDRecordAccessControlPointCharacteristicEnhancement: IDRecordAccessControl
     }
     
     func createCombinedReportResponse(_ numberOfRecords: UInt32) -> Data {
+        ConsoleOut.shared.logMessage(message: "\(#function) numberOfRecords: \(numberOfRecords)")
         var response = Data(IDRACPOpcode.combinedReportResponse.rawValue)
         response.append(IDRACPOperator.nullOperator.rawValue)
         response.append(numberOfRecords)
-        return response
+        return addE2EProtection(response: response)
     }
-    
+
     override func addReferenceTimeHistoryEvent() {
-        let eventData = ReferenceTimeHistoryEventEnhancement.createEventData(referenceTime, reason: .dateTimeLoss, timeZoneAndDSTOffset: .minutes(60))
+        let offset = TimeInterval(TimeZone.current.secondsFromGMT(for: referenceTime))
+        let eventData = ReferenceTimeHistoryEventEnhancement.createEventData(referenceTime, reason: .dateTimeLoss, timeZoneAndDSTOffset: offset)
         createHistoryEvent(for: .referenceTime, eventData: eventData)
+    }
+
+    // MARK: v2 events
+
+    /// Records an event of a type the kit does not know. The kit allocates the record number and offset when it
+    /// creates an event, so a known placeholder is recorded and then replaced by the v2 event carrying both.
+    func recordEnhancedHistoryEvent(type: IDHistoryEventType, eventData: Data) {
+        guard let eventType = IDHistoryEventType.v2EventTypes.first(where: { $0.type == type })?.event else {
+            createHistoryEvent(for: type, eventData: eventData)
+            return
+        }
+        createHistoryEvent(for: .maxBolusAmountChanged, eventData: MaxBolusAmountChangedHistoryEvent.createEventData(oldAmount: 0, newAmount: 0))
+        guard let placeholder = storedHistoryEvents.last, placeholder.type == .maxBolusAmountChanged else { return }
+        storedHistoryEvents[storedHistoryEvents.count - 1] = eventType.init(recordNumber: placeholder.recordNumber, relativeOffset: placeholder.relativeOffset, eventData: eventData)
+        ConsoleOut.shared.logMessage(message: "recorded v2 history event \(type) as record \(placeholder.recordNumber): \(eventData.hexadecimalString)")
+        historyDidChange?()
+    }
+
+    /// The kit stores Reference Time and Delivered Basal Rate Changed in their v1 layouts; a Combined Report
+    /// sends them in the v2 ones, with the Time Source and TZ/DST Offset, and the Basal Amount Delivered since
+    /// the previous basal change.
+    func v2Event(_ event: PumpHistoryEvent) -> PumpHistoryEvent {
+        switch event.type {
+        case .referenceTime:
+            return ReferenceTimeHistoryEventEnhancement.convertingFromV1(event, timeSource: .manual)
+        case .deliveredBasalRateChanged:
+            return DeliveredBasalRateChangedHistoryEventEnhancement.addingAmountDelivered(basalAmountDelivered(before: event), to: event)
+        default:
+            return event
+        }
+    }
+
+    /// The previous basal change's rate over the time until this one.
+    private func basalAmountDelivered(before event: PumpHistoryEvent) -> Double {
+        guard let previous = storedHistoryEvents.last(where: { $0.type == .deliveredBasalRateChanged && $0.recordNumber < event.recordNumber }) else { return 0 }
+        let previousRate = DeliveredBasalRateChangedHistoryEventEnhancement(recordNumber: previous.recordNumber, relativeOffset: previous.relativeOffset, eventData: previous.eventData).newRate
+        let hours = max(0, event.relativeOffset - previous.relativeOffset) / 3600
+        return (previousRate * hours * 100).rounded() / 100
     }
 }
 

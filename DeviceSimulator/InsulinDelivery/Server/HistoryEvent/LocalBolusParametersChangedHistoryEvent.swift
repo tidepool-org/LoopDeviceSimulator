@@ -2,7 +2,7 @@
 //  LocalBolusParametersChangedHistoryEvent.swift
 //  LoopDeviceSimulator
 //
-//  Created by Nathaniel Hamming on 2025-08-08.
+//  Created by Nathaniel Hamming on 2025-09-18.
 //  Copyright © 2025 Tidepool Project. All rights reserved.
 //
 
@@ -11,18 +11,11 @@ import BluetoothCommonKit
 import InsulinDeliveryServiceKit
 
 struct LocalBolusParametersChangedHistoryEvent: PumpHistoryEvent {
-    static func createHistoryEvent(recordNumber: RecordNumber, relativeOffset: TimeInterval) -> LocalBolusParametersChangedHistoryEvent {
-        let status = IDStateFlag.enabled
-        let stepValue: Double = 0.5
-        let maxAmount: Double = 10
-        var eventData = Data(status.rawValue)
+    static func createEventData(state: IDStateFlag, stepValue: Double, maxAmount: Double) -> Data {
+        var eventData = Data(state.rawValue)
         eventData.append(stepValue.sfloat)
         eventData.append(maxAmount.sfloat)
-        return LocalBolusParametersChangedHistoryEvent(
-            recordNumber: recordNumber,
-            relativeOffset: relativeOffset,
-            eventData: eventData
-        )
+        return eventData
     }
 
     let type: IDHistoryEventType = .localBolusParametersChanged
@@ -32,7 +25,7 @@ struct LocalBolusParametersChangedHistoryEvent: PumpHistoryEvent {
     let relativeOffset: TimeInterval
 
     let eventData: Data
-    
+
     var state: IDStateFlag? {
         IDStateFlag(rawValue: eventData[eventData.startIndex...].to(IDStateFlag.RawValue.self))
     }
@@ -40,7 +33,7 @@ struct LocalBolusParametersChangedHistoryEvent: PumpHistoryEvent {
     var stepValue: Double? {
         Data(eventData[eventData.startIndex.advanced(by: 1)...].to(SFLOAT.self)).sfloatToDouble()
     }
-    
+
     var maxAmount: Double? {
         Data(eventData[eventData.startIndex.advanced(by: 3)...].to(SFLOAT.self)).sfloatToDouble()
     }
@@ -48,6 +41,6 @@ struct LocalBolusParametersChangedHistoryEvent: PumpHistoryEvent {
 
 extension LocalBolusParametersChangedHistoryEvent {
     var description: String {
-        "LocalBolusParametersChangedHistoryEvent state: \(String(describing: state)), stepValue: \(String(describing: stepValue)), maxAmount: \(String(describing: maxAmount))"
+        "LocalBolusParametersChangedHistoryEvent state: \(String(describing: state)), stepValue: \(String(describing: stepValue)), maxAmount: \(String(describing: maxAmount)), recordNumber: \(recordNumber), relativeOffset: \(relativeOffset)"
     }
 }
